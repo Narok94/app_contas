@@ -1,0 +1,36 @@
+{
+  "name": "tatu-financeiro",
+  "version": "1.0.0",
+  "description": "Um software de controle de contas moderno e intuitivo.",
+  "private": true,
+  "scripts": {
+    "build": "mkdir -p dist && cp index.html dist/index.html && esbuild index.tsx --bundle --format=esm --outfile=dist/bundle.js --jsx=automatic --external:react --external:react-dom/client --external:@google/genai --external:recharts --external:framer-motion --external:xlsx --define:process.env.API_KEY='\"'$API_KEY'\"' && esbuild server.ts --bundle --platform=node --external:pg --external:drizzle-orm --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "dev": "npm run build && node dist/server.cjs",
+    "db:push": "npx drizzle-kit push",
+    "db:studio": "npx drizzle-kit studio",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@google/genai": "^2.10.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.1",
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
+    "esbuild": "0.23.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "date-fns": "^4.1.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
+    "framer-motion": "^12.41.0",
+    "lucide-react": "^0.577.0",
+    "pg": "^8.22.0",
+    "recharts": "^3.8.0",
+    "xlsx": "^0.18.5"
+  }
+}

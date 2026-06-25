@@ -1,0 +1,8 @@
+{
+  "name": "Contas_cel",
+  "description": "Um software de controle de contas pessoal e inteligente, projetado para organizar a vida financeira a dois.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
