@@ -135,26 +135,51 @@ app.post('/api/import', async (req, res) => {
 
     // Insert new data
     if (data.users && data.users.length > 0) {
-      await db.insert(users).values(data.users);
+      await db.insert(users).values(data.users.map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        password: u.password,
+        role: u.role,
+        groupIds: u.groupIds || [],
+      })));
     }
     if (data.groups && data.groups.length > 0) {
-      await db.insert(groups).values(data.groups);
+      await db.insert(groups).values(data.groups.map((g: any) => ({
+        id: g.id,
+        name: g.name,
+      })));
     }
     if (data.accounts && data.accounts.length > 0) {
       await db.insert(accounts).values(data.accounts.map((a: any) => ({
-        ...a,
+        id: a.id,
+        groupId: a.groupId,
+        name: a.name,
+        category: a.category,
         value: String(a.value),
-        totalValue: a.totalValue ? String(a.totalValue) : null
+        status: a.status,
+        isRecurrent: Boolean(a.isRecurrent),
+        isInstallment: Boolean(a.isInstallment),
+        totalInstallments: a.totalInstallments || null,
+        currentInstallment: a.currentInstallment || null,
+        totalValue: a.totalValue ? String(a.totalValue) : null,
+        installmentId: a.installmentId || null,
+        paymentDate: a.paymentDate || null,
       })));
     }
     if (data.incomes && data.incomes.length > 0) {
       await db.insert(incomes).values(data.incomes.map((i: any) => ({
-        ...i,
-        value: String(i.value)
+        id: i.id,
+        groupId: i.groupId,
+        name: i.name,
+        value: String(i.value),
+        date: i.date,
+        isRecurrent: Boolean(i.isRecurrent),
       })));
     }
     if (data.categories && data.categories.length > 0) {
-      await db.insert(categories).values(data.categories.map((name: string) => ({ id: name, name })));
+      const uniqueCats = Array.from(new Set<string>(data.categories));
+      await db.insert(categories).values(uniqueCats.map((name: string) => ({ id: name, name })));
     }
     if (data.settings) {
       await db.insert(settings).values({ id: '1', ...data.settings });

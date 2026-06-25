@@ -34,65 +34,24 @@ class RealtimeService {
   constructor() {
     this.db = this.loadAndArmorData();
     this.init();
-    window.addEventListener('storage', this.handleCrossTabSync);
   }
 
   private loadAndArmorData(): Db {
     const defaultSettings: AppSettings = { appName: 'TATU.' };
-    let recoveredAccounts: Account[] = [];
-    let recoveredIncomes: Income[] = [];
-    let recoveredUsers: User[] = [];
-    let recoveredGroups: Group[] = [];
-    let recoveredSettings: AppSettings = defaultSettings;
-    let recoveredCategories: string[] = ACCOUNT_CATEGORIES;
 
+    // Limpar localStorage antigo para não sobrescrever os dados da API
     [DB_MAIN_KEY, DB_BACKUP_KEY, ...LEGACY_KEYS].forEach(key => {
-        const raw = localStorage.getItem(key);
-        if (!raw) return;
-        try {
-            const parsed = JSON.parse(raw);
-            const data = parsed.db || parsed;
-            
-            if (data.accounts) {
-                data.accounts.forEach((acc: Account) => {
-                    if (!recoveredAccounts.find(a => a.id === acc.id)) recoveredAccounts.push(acc);
-                });
-            }
-            if (data.incomes) {
-                data.incomes.forEach((inc: Income) => {
-                    if (!recoveredIncomes.find(i => i.id === inc.id)) recoveredIncomes.push(inc);
-                });
-            }
-            if (data.users) {
-                data.users.forEach((u: User) => {
-                    if (!recoveredUsers.find(user => user.id === u.id)) recoveredUsers.push(u);
-                });
-            }
-            if (data.groups) {
-                data.groups.forEach((g: Group) => {
-                    if (!recoveredGroups.find(group => group.id === g.id)) recoveredGroups.push(g);
-                });
-            }
-            if (data.settings) recoveredSettings = { ...recoveredSettings, ...data.settings };
-            if (data.categories?.length) recoveredCategories = Array.from(new Set([...recoveredCategories, ...data.categories]));
-            
-        } catch (e) { console.warn(`Erro ao ler chave ${key}`); }
+        localStorage.removeItem(key);
     });
 
-    const hasAnyData = recoveredAccounts.length > 0 || recoveredIncomes.length > 0;
-
-    const db = {
-      users: recoveredUsers.length ? recoveredUsers : MOCK_USERS,
-      groups: recoveredGroups.length ? recoveredGroups : MOCK_GROUPS,
-      accounts: recoveredAccounts.length ? recoveredAccounts : (hasAnyData ? [] : MOCK_ACCOUNTS),
-      categories: recoveredCategories,
-      incomes: recoveredIncomes.length ? recoveredIncomes : (hasAnyData ? [] : MOCK_INCOMES),
-      settings: recoveredSettings,
+    return {
+      users: [],
+      groups: [],
+      accounts: [],
+      categories: ACCOUNT_CATEGORIES,
+      incomes: [],
+      settings: defaultSettings,
     };
-
-    db.accounts = db.accounts.map(a => this.normalizeAccount(a));
-
-    return db;
   }
 
   private async init() {
@@ -105,9 +64,7 @@ class RealtimeService {
   }
 
   private saveLocal() {
-    const payload = JSON.stringify({ db: this.db, timestamp: Date.now() });
-    localStorage.setItem(DB_MAIN_KEY, payload);
-    localStorage.setItem(DB_BACKUP_KEY, payload);
+    // localStorage não é mais utilizado.
   }
 
   public async syncWithRemote() {
@@ -344,11 +301,14 @@ class RealtimeService {
       this.saveLocal(); 
 
       // Push all to API
-      await fetch('/api/import', { 
+      const res = await fetch('/api/import', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify(this.db) 
       });
+      if (!res.ok) {
+        throw new Error('Falha ao importar backup no servidor.');
+      }
   }
 }
 
