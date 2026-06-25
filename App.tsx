@@ -486,8 +486,8 @@ const App: React.FC = () => {
     try {
         const text = await file.text();
         const data = JSON.parse(text);
-        if (window.confirm('Atenção: Importar um backup irá substituir TODOS os dados atuais. Deseja continuar?')) {
-            realtimeService.importData(data);
+        if (window.confirm('Atenção: Importar um backup irá substituir TODOS os dados atuais no banco. Deseja continuar?')) {
+            await realtimeService.importData(data);
             alert('Backup importado com sucesso!');
             window.location.reload(); // Recarregar para garantir que tudo sincronize
         }

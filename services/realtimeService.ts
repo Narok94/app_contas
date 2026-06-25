@@ -427,14 +427,11 @@ class RealtimeService {
       this.saveLocal(); 
 
       // Push all to API
-      await Promise.all([
-          ...this.db.users.map(u => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(u) })),
-          ...this.db.groups.map(g => fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(g) })),
-          ...this.db.accounts.map(a => fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(a) })),
-          ...this.db.incomes.map(i => fetch('/api/incomes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(i) })),
-          fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ categories: this.db.categories }) }),
-          fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.db.settings) }),
-      ]);
+      await fetch('/api/import', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(this.db) 
+      });
   }
 }
 

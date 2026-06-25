@@ -121,6 +121,52 @@ app.post('/api/settings', async (req, res) => {
   res.json(newSettings);
 });
 
+// Import entire DB
+app.post('/api/import', async (req, res) => {
+  const data = req.body;
+  try {
+    // Delete all existing data
+    await db.delete(users);
+    await db.delete(groups);
+    await db.delete(accounts);
+    await db.delete(incomes);
+    await db.delete(categories);
+    await db.delete(settings);
+
+    // Insert new data
+    if (data.users && data.users.length > 0) {
+      await db.insert(users).values(data.users);
+    }
+    if (data.groups && data.groups.length > 0) {
+      await db.insert(groups).values(data.groups);
+    }
+    if (data.accounts && data.accounts.length > 0) {
+      await db.insert(accounts).values(data.accounts.map((a: any) => ({
+        ...a,
+        value: String(a.value),
+        totalValue: a.totalValue ? String(a.totalValue) : null
+      })));
+    }
+    if (data.incomes && data.incomes.length > 0) {
+      await db.insert(incomes).values(data.incomes.map((i: any) => ({
+        ...i,
+        value: String(i.value)
+      })));
+    }
+    if (data.categories && data.categories.length > 0) {
+      await db.insert(categories).values(data.categories.map((name: string) => ({ id: name, name })));
+    }
+    if (data.settings) {
+      await db.insert(settings).values({ id: '1', ...data.settings });
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Import failed', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Static frontend
 app.use(express.static(path.join(process.cwd(), 'dist')));
 app.get('*', (req, res) => {
