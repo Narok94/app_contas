@@ -129,11 +129,25 @@ const App: React.FC = () => {
   }, [incomes, activeGroupId]);
 
   const handleLogin = async (username: string, password: string): Promise<boolean> => {
-    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
-    if (!user || user.password !== password) return false;
-    setCurrentUser(user);
-    sessionStorage.setItem('app_currentUser', JSON.stringify(user));
-    realtimeService.setUser(user.username);
+    let userToAuth = null;
+    try {
+      const res = await fetch('/api/users');
+      if (res.ok) {
+        const remoteUsers = await res.json();
+        userToAuth = remoteUsers.find((u: any) => u.username.toLowerCase() === username.toLowerCase());
+      }
+    } catch (e) {
+      console.error('Failed to fetch remote users for login', e);
+    }
+    
+    if (!userToAuth) {
+      userToAuth = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+    }
+
+    if (!userToAuth || userToAuth.password !== password) return false;
+    setCurrentUser(userToAuth);
+    sessionStorage.setItem('app_currentUser', JSON.stringify(userToAuth));
+    realtimeService.setUser(userToAuth.username);
     handleGroupSelect('jessica-personal');
     return true;
   };

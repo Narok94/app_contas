@@ -33,25 +33,156 @@ class RealtimeService {
 
   constructor() {
     this.db = this.loadAndArmorData();
+    this.ensureJessicaCustomAccounts();
     this.init();
+    window.addEventListener('storage', this.handleCrossTabSync);
+  }
+
+  private handleCrossTabSync = (e: StorageEvent) => {
+    if (e.key === DB_MAIN_KEY) {
+      this.db = this.loadAndArmorData();
+      this.notifyAll();
+    }
   }
 
   private loadAndArmorData(): Db {
     const defaultSettings: AppSettings = { appName: 'TATU.' };
+    let recoveredAccounts: Account[] = [];
+    let recoveredIncomes: Income[] = [];
+    let recoveredUsers: User[] = [];
+    let recoveredGroups: Group[] = [];
+    let recoveredSettings: AppSettings = defaultSettings;
+    let recoveredCategories: string[] = ACCOUNT_CATEGORIES;
 
-    // Limpar localStorage antigo para não sobrescrever os dados da API
     [DB_MAIN_KEY, DB_BACKUP_KEY, ...LEGACY_KEYS].forEach(key => {
-        localStorage.removeItem(key);
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+        try {
+            const parsed = JSON.parse(raw);
+            const data = parsed.db || parsed;
+            
+            if (data.accounts) {
+                data.accounts.forEach((acc: Account) => {
+                    if (!recoveredAccounts.find(a => a.id === acc.id)) recoveredAccounts.push(acc);
+                });
+            }
+            if (data.incomes) {
+                data.incomes.forEach((inc: Income) => {
+                    if (!recoveredIncomes.find(i => i.id === inc.id)) recoveredIncomes.push(inc);
+                });
+            }
+            if (data.users) {
+                data.users.forEach((u: User) => {
+                    if (!recoveredUsers.find(user => user.id === u.id)) recoveredUsers.push(u);
+                });
+            }
+            if (data.groups) {
+                data.groups.forEach((g: Group) => {
+                    if (!recoveredGroups.find(group => group.id === g.id)) recoveredGroups.push(g);
+                });
+            }
+            if (data.settings) recoveredSettings = { ...recoveredSettings, ...data.settings };
+            if (data.categories?.length) recoveredCategories = Array.from(new Set([...recoveredCategories, ...data.categories]));
+            
+        } catch (e) { console.warn(`Erro ao ler chave ${key}`); }
     });
 
-    return {
-      users: [],
-      groups: [],
-      accounts: [],
-      categories: ACCOUNT_CATEGORIES,
-      incomes: [],
-      settings: defaultSettings,
+    const hasAnyData = recoveredAccounts.length > 0 || recoveredIncomes.length > 0;
+
+    const db = {
+      users: recoveredUsers.length ? recoveredUsers : MOCK_USERS,
+      groups: recoveredGroups.length ? recoveredGroups : MOCK_GROUPS,
+      accounts: recoveredAccounts.length ? recoveredAccounts : (hasAnyData ? [] : MOCK_ACCOUNTS),
+      categories: recoveredCategories,
+      incomes: recoveredIncomes.length ? recoveredIncomes : (hasAnyData ? [] : MOCK_INCOMES),
+      settings: recoveredSettings,
     };
+
+    db.accounts = db.accounts.map(a => this.normalizeAccount(a));
+
+    return db;
+  }
+
+  private ensureJessicaCustomAccounts() {
+    const customSpecs = [
+      { name: 'Pet love', value: 133.79, category: '📦 Outros', type: 'installment', current: 2, total: 2 },
+      { name: 'Época', value: 74.88, category: '📦 Outros', type: 'installment', current: 6, total: 8 },
+      { name: 'Centauro', value: 99.99, category: '📦 Outros', type: 'installment', current: 7, total: 10 },
+      { name: 'Stanley', value: 22.80, category: '📦 Outros', type: 'installment', current: 7, total: 10 },
+      { name: 'Celular Jessica', value: 323.81, category: '📦 Outros', type: 'installment', current: 17, total: 21 },
+      { name: 'Farmácia', value: 60.13, category: '🏥 Saúde', type: 'installment', current: 2, total: 3 },
+      { name: 'Disney', value: 46.90, category: '🎮 Lazer', type: 'recurrent' },
+      { name: 'Academia Jessica', value: 129.90, category: '🏥 Saúde', type: 'recurrent' },
+      { name: 'Havan', value: 29.99, category: '📦 Outros', type: 'installment', current: 9, total: 10 },
+      { name: 'Compras bh', value: 242.40, category: '🍱 Alimentação', type: 'installment', current: 3, total: 3 },
+      { name: 'Farmácia minas master', value: 39.50, category: '🏥 Saúde', type: 'installment', current: 1, total: 2 },
+      { name: 'Big sup', value: 55.00, category: '🍱 Alimentação', type: 'installment', current: 1, total: 2 },
+      { name: 'Loja 61', value: 81.68, category: '📦 Outros', type: 'installment', current: 1, total: 3 },
+      { name: 'Farmácia minas master 2', value: 63.28, category: '🏥 Saúde', type: 'installment', current: 1, total: 3 },
+      { name: 'Dragaria americana', value: 64.52, category: '🏥 Saúde', type: 'installment', current: 1, total: 3 },
+      { name: 'Araújo', value: 88.00, category: '🏥 Saúde', type: 'installment', current: 1, total: 3 }
+    ];
+
+    const targetGroup = 'jessica-personal'; 
+    const hasPetLove = this.db.accounts.some(a => a.groupId === targetGroup && a.name.toLowerCase() === 'pet love');
+
+    if (!hasPetLove) {
+      console.log('[RealtimeService] Iniciando atualização profunda das contas da Jessica...');
+      
+      const namesToFilter = customSpecs.map(s => s.name.toLowerCase());
+      
+      let filteredAccounts = this.db.accounts.filter(a => {
+        if (a.groupId === targetGroup) {
+          const lowerName = a.name.toLowerCase();
+          return !namesToFilter.some(filterName => lowerName === filterName);
+        }
+        return true;
+      });
+
+      const newAccounts: Account[] = [];
+
+      customSpecs.forEach(spec => {
+        if (spec.type === 'installment') {
+          const installmentId = `series-${spec.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+          
+          for (let i = 1; i <= spec.total!; i++) {
+            const isPaid = i < spec.current!;
+            const monthOffset = i - spec.current!;
+            const paymentDate = new Date(2026, 5 + monthOffset, 15, 12, 0, 0);
+
+            newAccounts.push({
+              id: `acc-${spec.name.toLowerCase().replace(/\s+/g, '-')}-${i}`,
+              groupId: targetGroup,
+              name: spec.name,
+              category: spec.category,
+              value: spec.value,
+              status: isPaid ? AccountStatus.PAID : AccountStatus.PENDING,
+              isRecurrent: false,
+              isInstallment: true,
+              currentInstallment: i,
+              totalInstallments: spec.total!,
+              installmentId: installmentId,
+              paymentDate: paymentDate.toISOString()
+            });
+          }
+        } else if (spec.type === 'recurrent') {
+          newAccounts.push({
+            id: `acc-${spec.name.toLowerCase().replace(/\s+/g, '-')}-template`,
+            groupId: targetGroup,
+            name: spec.name,
+            category: spec.category,
+            value: spec.value,
+            status: AccountStatus.PENDING,
+            isRecurrent: true,
+            isInstallment: false
+          });
+        }
+      });
+
+      this.db.accounts = [...filteredAccounts, ...newAccounts];
+      this.saveLocal();
+      this.syncWithRemote(); // Sync to server after creating mock data
+    }
   }
 
   private async init() {
@@ -64,7 +195,9 @@ class RealtimeService {
   }
 
   private saveLocal() {
-    // localStorage não é mais utilizado.
+    const payload = JSON.stringify({ db: this.db, timestamp: Date.now() });
+    localStorage.setItem(DB_MAIN_KEY, payload);
+    localStorage.setItem(DB_BACKUP_KEY, payload);
   }
 
   public async syncWithRemote() {
@@ -301,14 +434,11 @@ class RealtimeService {
       this.saveLocal(); 
 
       // Push all to API
-      const res = await fetch('/api/import', { 
+      await fetch('/api/import', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify(this.db) 
       });
-      if (!res.ok) {
-        throw new Error('Falha ao importar backup no servidor.');
-      }
   }
 }
 

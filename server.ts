@@ -135,51 +135,26 @@ app.post('/api/import', async (req, res) => {
 
     // Insert new data
     if (data.users && data.users.length > 0) {
-      await db.insert(users).values(data.users.map((u: any) => ({
-        id: u.id,
-        name: u.name,
-        username: u.username,
-        password: u.password,
-        role: u.role,
-        groupIds: u.groupIds || [],
-      })));
+      await db.insert(users).values(data.users);
     }
     if (data.groups && data.groups.length > 0) {
-      await db.insert(groups).values(data.groups.map((g: any) => ({
-        id: g.id,
-        name: g.name,
-      })));
+      await db.insert(groups).values(data.groups);
     }
     if (data.accounts && data.accounts.length > 0) {
       await db.insert(accounts).values(data.accounts.map((a: any) => ({
-        id: a.id,
-        groupId: a.groupId,
-        name: a.name,
-        category: a.category,
+        ...a,
         value: String(a.value),
-        status: a.status,
-        isRecurrent: Boolean(a.isRecurrent),
-        isInstallment: Boolean(a.isInstallment),
-        totalInstallments: a.totalInstallments || null,
-        currentInstallment: a.currentInstallment || null,
-        totalValue: a.totalValue ? String(a.totalValue) : null,
-        installmentId: a.installmentId || null,
-        paymentDate: a.paymentDate || null,
+        totalValue: a.totalValue ? String(a.totalValue) : null
       })));
     }
     if (data.incomes && data.incomes.length > 0) {
       await db.insert(incomes).values(data.incomes.map((i: any) => ({
-        id: i.id,
-        groupId: i.groupId,
-        name: i.name,
-        value: String(i.value),
-        date: i.date,
-        isRecurrent: Boolean(i.isRecurrent),
+        ...i,
+        value: String(i.value)
       })));
     }
     if (data.categories && data.categories.length > 0) {
-      const uniqueCats = Array.from(new Set<string>(data.categories));
-      await db.insert(categories).values(uniqueCats.map((name: string) => ({ id: name, name })));
+      await db.insert(categories).values(data.categories.map((name: string) => ({ id: name, name })));
     }
     if (data.settings) {
       await db.insert(settings).values({ id: '1', ...data.settings });
@@ -194,15 +169,13 @@ app.post('/api/import', async (req, res) => {
 
 // Static frontend
 app.use(express.static(path.join(process.cwd(), 'dist')));
-app.get('*', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
 });
 
-if (require.main === module || process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 export default app;
