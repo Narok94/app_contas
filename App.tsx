@@ -799,9 +799,9 @@ const App: React.FC = () => {
 
   // Render bottom nav for mobile
   const renderMobileBottomNav = () => {
-    if (!isMobile || view === "login" || view === "assistant") return null;
+    if (!isMobile || view === "login") return null;
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-6 py-2 flex justify-between items-center z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] h-20">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-6 py-2 flex justify-between items-center z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] h-20 safe-area-bottom">
         <button
           onClick={() => setView("dashboard")}
           className={`flex flex-col items-center gap-1 ${view === "dashboard" ? "text-[#D8875D]" : "text-slate-400"}`}
@@ -869,7 +869,7 @@ const App: React.FC = () => {
           />
         )}
         <main
-          className={`max-w-[1200px] mx-auto w-full flex-1 flex flex-col ${view === "assistant" && isMobile ? "p-0 h-[100dvh]" : "p-3 sm:p-4 lg:p-6 pb-32"}`}
+          className={`max-w-[1200px] mx-auto w-full flex-1 flex flex-col ${view === "assistant" && isMobile ? "p-0 h-[100dvh] pb-20" : "p-3 sm:p-4 lg:p-6 pb-32"}`}
         >
           {view === "assistant" && isMobile && (
             <div className="flex-1 flex flex-col">

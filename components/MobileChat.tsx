@@ -11,6 +11,8 @@ import {
   Menu,
   Sparkles,
   ArrowLeft,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
 import { type User, type Account, type Income, AccountStatus } from "../types";
@@ -60,6 +62,9 @@ const MobileChat: React.FC<MobileChatProps> = ({
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -115,6 +120,24 @@ const MobileChat: React.FC<MobileChatProps> = ({
       minute: "2-digit",
     });
   }
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } =
+      scrollContainerRef.current;
+    setShowScrollTop(scrollTop > 200);
+    setShowScrollBottom(scrollHeight - scrollTop - clientHeight > 100);
+  };
+
+  const scrollToTop = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   // Generate monthly financial summary text
   const generateFinancialSummaryText = (): string => {
@@ -681,7 +704,10 @@ const MobileChat: React.FC<MobileChatProps> = ({
   return (
     <div className="flex-1 flex flex-col w-full bg-[#fdfbf7] relative font-sans">
       {/* Header */}
-      <div className="bg-[#D8875D] px-4 py-4 flex items-center gap-3 z-10 shadow-sm shrink-0 rounded-b-3xl">
+      <div
+        className="bg-[#D8875D] px-4 pb-4 flex items-center gap-3 z-10 shadow-sm shrink-0 rounded-b-3xl"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}
+      >
         {onBack && (
           <button
             onClick={onBack}
@@ -705,6 +731,8 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
       {/* Messages Area - Notebook Lines */}
       <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-2 scrollbar-none no-scrollbar relative"
         style={{
           backgroundImage:
@@ -818,6 +846,32 @@ const MobileChat: React.FC<MobileChatProps> = ({
           <div ref={messagesEndRef} className="h-[40px] shrink-0" />
         </div>
       </div>
+
+      {/* Floating Scroll Buttons */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={scrollToTop}
+            className="absolute bottom-28 right-4 w-10 h-10 bg-white border border-slate-200 rounded-full shadow-md flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-50 z-30 transition-colors"
+          >
+            <ChevronUp className="w-5 h-5" />
+          </motion.button>
+        )}
+        {showScrollBottom && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={scrollToBottom}
+            className="absolute bottom-28 right-16 w-10 h-10 bg-[#D8875D] border border-[#c4774f] rounded-full shadow-md flex items-center justify-center text-white hover:bg-[#c4774f] z-30 transition-colors"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Input Area */}
       <div className="w-full shrink-0 px-6 py-4 bg-[#fdfbf7] z-20 border-t border-slate-200/60 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
