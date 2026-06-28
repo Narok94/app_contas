@@ -855,7 +855,9 @@ const App: React.FC = () => {
         />
       </div>
 
-      <div className="relative z-10 flex-1 flex flex-col">
+      <div
+        className={`relative z-10 flex-1 flex flex-col ${isMobile && view === "assistant" ? "overflow-hidden min-h-0" : ""}`}
+      >
         {!isMobile && (
           <Header
             currentUser={currentUser}
@@ -869,10 +871,10 @@ const App: React.FC = () => {
           />
         )}
         <main
-          className={`max-w-[1200px] mx-auto w-full flex-1 flex flex-col ${view === "assistant" && isMobile ? "p-0 pb-20 overflow-hidden" : "p-3 sm:p-4 lg:p-6 pb-32"}`}
+          className={`max-w-[1200px] mx-auto w-full flex-1 flex flex-col ${view === "assistant" && isMobile ? "p-0 pb-20 overflow-hidden min-h-0" : "p-3 sm:p-4 lg:p-6 pb-32"}`}
         >
           {view === "assistant" && isMobile && (
-            <div className="flex-1 flex flex-col overflow-hidden relative">
+            <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
               <MobileChat
                 currentUser={currentUser}
                 activeGroupId={activeGroupId}

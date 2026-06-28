@@ -722,14 +722,16 @@ const MobileChat: React.FC<MobileChatProps> = ({
     <div className="flex-1 flex flex-col w-full h-full bg-[#fdfbf7] relative font-sans overflow-hidden">
       <style>{`
         .notebook-scroll::-webkit-scrollbar {
-          width: 6px;
+          width: 8px;
         }
         .notebook-scroll::-webkit-scrollbar-track {
-          background: transparent;
+          background: rgba(216, 135, 93, 0.05);
+          border-radius: 10px;
         }
         .notebook-scroll::-webkit-scrollbar-thumb {
-          background-color: rgba(216, 135, 93, 0.4);
+          background-color: rgba(216, 135, 93, 0.6);
           border-radius: 10px;
+          border: 1px solid rgba(255, 255, 255, 0.4);
         }
       `}</style>
       {/* Header */}
