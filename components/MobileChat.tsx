@@ -52,6 +52,17 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Interactive transaction state machine
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    name: string;
+    value: number;
+    isInstallment: boolean;
+    currentInstallment?: number;
+    totalInstallments?: number;
+    step: 'status' | 'method';
+    status?: AccountStatus;
+  } | null>(null);
+
   useEffect(() => {
     const savedChat = localStorage.getItem('tatu_mobile_chat_history');
     if (savedChat) {
@@ -107,6 +118,257 @@ const MobileChat: React.FC<MobileChatProps> = ({
            `📉 *Despesas Totais:* R$ ${totalExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
            `⭐ *Saldo Restante:* R$ ${balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n` +
            `Deseja adicionar mais alguma conta?`;
+  };
+
+  // Helper to add to temporary list ("Contas da Conversa") in localStorage
+  const addConversationAccount = (name: string, value: number, status: AccountStatus, paymentMethod?: 'dinheiro' | 'credito') => {
+    let list: any[] = [];
+    const raw = localStorage.getItem('tatu_conversation_accounts');
+    if (raw) {
+      try {
+        list = JSON.parse(raw);
+      } catch (e) {}
+    }
+    const newItem = {
+      id: `conv-acc-${Date.now()}-${Math.random()}`,
+      groupId: activeGroupId,
+      name,
+      value,
+      category: '📦 Outros',
+      status,
+      paymentMethod,
+      createdAt: new Date().toISOString()
+    };
+    list.push(newItem);
+    localStorage.setItem('tatu_conversation_accounts', JSON.stringify(list));
+    window.dispatchEvent(new Event('tatu_conversation_accounts_updated'));
+  };
+
+  // Helper to add installment series directly to main accounts database
+  const handleAddInstallmentDirectly = async (
+    name: string,
+    value: number,
+    current: number,
+    total: number,
+    status: AccountStatus
+  ) => {
+    const installmentId = `inst-${Date.now()}`;
+    const baseDate = new Date(selectedDate);
+    
+    for (let i = current; i <= total; i++) {
+      const currentDate = new Date(baseDate);
+      currentDate.setMonth(baseDate.getMonth() + (i - current));
+      
+      const installmentStatus = (i === current) ? status : AccountStatus.PENDING;
+      
+      const installmentAccount: Account = {
+        id: `acc-bot-${Date.now()}-${i}`,
+        groupId: activeGroupId,
+        name: name,
+        category: '📦 Outros',
+        value: value,
+        isRecurrent: false,
+        isInstallment: true,
+        installmentId: installmentId,
+        currentInstallment: i,
+        totalInstallments: total,
+        status: installmentStatus,
+        paymentDate: currentDate.toISOString()
+      };
+      await dataService.addAccount(installmentAccount);
+    }
+  };
+
+  // Dual-mode parsing: 100% optimized regex transaction detection
+  const tryParseTransaction = (text: string) => {
+    const trimmed = text.trim();
+    
+    // 1. Try installment regex: [name] [value] [current]/[total]
+    // e.g. "teste 999 1/5" or "Compra lanche 25,50 1/3"
+    const installmentRegex = /^(.+?)\s+([\d.,]+)\s+(\d+)\s*[\/\\]\s*(\d+)\s*$/i;
+    const instMatch = trimmed.match(installmentRegex);
+    if (instMatch) {
+      const name = instMatch[1].trim();
+      const rawVal = instMatch[2].replace(',', '.');
+      const value = parseFloat(rawVal);
+      const current = parseInt(instMatch[3], 10);
+      const total = parseInt(instMatch[4], 10);
+      
+      if (!isNaN(value) && !isNaN(current) && !isNaN(total)) {
+        return {
+          name,
+          value,
+          isInstallment: true,
+          currentInstallment: current,
+          totalInstallments: total
+        };
+      }
+    }
+    
+    // 2. Try regular regex: [name] [value]
+    // e.g. "teste 999" or "lanche 25.50"
+    const regularRegex = /^(.+?)\s+([\d.,]+)\s*$/i;
+    const regMatch = trimmed.match(regularRegex);
+    if (regMatch) {
+      const name = regMatch[1].trim();
+      const rawVal = regMatch[2].replace(',', '.');
+      const value = parseFloat(rawVal);
+      
+      if (!isNaN(value)) {
+        return {
+          name,
+          value,
+          isInstallment: false
+        };
+      }
+    }
+    
+    return null;
+  };
+
+  const handleOptionSelect = async (option: 'pago' | 'pendente' | 'dinheiro' | 'credito') => {
+    if (!pendingConfirmation) return;
+
+    setIsTyping(true);
+    const current = pendingConfirmation;
+
+    // 1. Add user message
+    let userText = '';
+    if (option === 'pago') userText = 'Já foi paga';
+    else if (option === 'pendente') userText = 'Adicionar como pendente';
+    else if (option === 'dinheiro') userText = 'Dinheiro';
+    else if (option === 'credito') userText = 'Crédito';
+
+    const newUserMsg: Message = {
+      id: `user-opt-${Date.now()}`,
+      sender: 'user',
+      text: userText,
+      timestamp: formatTime(new Date()),
+    };
+
+    const updatedMessages = [...messages, newUserMsg];
+    setMessages(updatedMessages);
+    saveChatHistory(updatedMessages);
+
+    // 2. State machine processing
+    if (current.step === 'status') {
+      if (option === 'pago') {
+        setPendingConfirmation({
+          ...current,
+          step: 'method',
+          status: AccountStatus.PAID
+        });
+        
+        setTimeout(() => {
+          const newBotMsg: Message = {
+            id: `bot-opt-${Date.now()}`,
+            sender: 'bot',
+            text: `Perfeito! Foi paga no dinheiro ou no crédito?`,
+            timestamp: formatTime(new Date()),
+          };
+          const final = [...updatedMessages, newBotMsg];
+          setMessages(final);
+          saveChatHistory(final);
+          setIsTyping(false);
+        }, 600);
+      } else {
+        // 'pendente'
+        if (current.isInstallment) {
+          await handleAddInstallmentDirectly(
+            current.name,
+            current.value,
+            current.currentInstallment || 1,
+            current.totalInstallments || 1,
+            AccountStatus.PENDING
+          );
+        } else {
+          addConversationAccount(current.name, current.value, AccountStatus.PENDING);
+        }
+
+        setPendingConfirmation(null);
+
+        setTimeout(() => {
+          const text = current.isInstallment 
+            ? `Entendido! O parcelamento de **${current.name}** (${current.currentInstallment}/${current.totalInstallments}) de R$ ${current.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} foi adicionado como **PENDENTE** diretamente na planilha principal.`
+            : `Entendido! A conta **${current.name}** de R$ ${current.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} foi adicionada como **PENDENTE** na listagem de contas da conversa.`;
+
+          const newBotMsg: Message = {
+            id: `bot-opt-${Date.now()}`,
+            sender: 'bot',
+            text,
+            timestamp: formatTime(new Date()),
+          };
+          const final = [...updatedMessages, newBotMsg];
+          setMessages(final);
+          saveChatHistory(final);
+          setIsTyping(false);
+        }, 600);
+      }
+    } else if (current.step === 'method') {
+      if (option === 'dinheiro') {
+        if (current.isInstallment) {
+          await handleAddInstallmentDirectly(
+            current.name,
+            current.value,
+            current.currentInstallment || 1,
+            current.totalInstallments || 1,
+            AccountStatus.PAID
+          );
+        } else {
+          addConversationAccount(current.name, current.value, AccountStatus.PAID, 'dinheiro');
+        }
+
+        setPendingConfirmation(null);
+
+        setTimeout(() => {
+          const text = current.isInstallment
+            ? `Tudo certo! O parcelamento de **${current.name}** (${current.currentInstallment}/${current.totalInstallments}) de R$ ${current.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} foi adicionado como **PAGO (Dinheiro)** diretamente na planilha principal.`
+            : `Adicionado! A conta **${current.name}** de R$ ${current.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} foi incluída na listagem de contas da conversa como **Pago no Dinheiro**.`;
+
+          const newBotMsg: Message = {
+            id: `bot-opt-${Date.now()}`,
+            sender: 'bot',
+            text,
+            timestamp: formatTime(new Date()),
+          };
+          const final = [...updatedMessages, newBotMsg];
+          setMessages(final);
+          saveChatHistory(final);
+          setIsTyping(false);
+        }, 600);
+      } else if (option === 'credito') {
+        if (current.isInstallment) {
+          await handleAddInstallmentDirectly(
+            current.name,
+            current.value,
+            current.currentInstallment || 1,
+            current.totalInstallments || 1,
+            AccountStatus.PAID
+          );
+        } else {
+          addConversationAccount(current.name, current.value, AccountStatus.PAID, 'credito');
+        }
+
+        setPendingConfirmation(null);
+
+        setTimeout(() => {
+          const text = current.isInstallment
+            ? `Tudo certo! O parcelamento de **${current.name}** (${current.currentInstallment}/${current.totalInstallments}) de R$ ${current.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} foi adicionado como **PAGO (Crédito)** diretamente na planilha principal.`
+            : `Adicionado! A conta **${current.name}** de R$ ${current.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} foi incluída na listagem de contas da conversa como **Pago no Crédito**.`;
+
+          const newBotMsg: Message = {
+            id: `bot-opt-${Date.now()}`,
+            sender: 'bot',
+            text,
+            timestamp: formatTime(new Date()),
+          };
+          const final = [...updatedMessages, newBotMsg];
+          setMessages(final);
+          saveChatHistory(final);
+          setIsTyping(false);
+        }, 600);
+      }
+    }
   };
 
   const callGeminiParser = async (text: string, chatHistory: Message[]) => {
@@ -171,6 +433,58 @@ const MobileChat: React.FC<MobileChatProps> = ({
     saveChatHistory(updatedMessages);
     setIsTyping(true);
 
+    // 1. If currently waiting for confirmation step
+    if (pendingConfirmation) {
+      const lower = userText.toLowerCase().trim();
+      if (pendingConfirmation.step === 'status') {
+        if (lower.includes('pago') || lower.includes('paga') || lower === 'sim' || lower === 's') {
+          await handleOptionSelect('pago');
+          return;
+        } else if (lower.includes('pendente') || lower.includes('não') || lower.includes('nao') || lower === 'n') {
+          await handleOptionSelect('pendente');
+          return;
+        }
+      } else if (pendingConfirmation.step === 'method') {
+        if (lower.includes('dinheiro') || lower.includes('vista') || lower.includes('visto') || lower.includes('pix')) {
+          await handleOptionSelect('dinheiro');
+          return;
+        } else if (lower.includes('crédito') || lower.includes('credito') || lower.includes('cartão') || lower.includes('cartao') || lower.includes('card')) {
+          await handleOptionSelect('credito');
+          return;
+        }
+      }
+    }
+
+    // 2. Try to parse new transaction (regex-based fast path)
+    const parsed = tryParseTransaction(userText);
+    if (parsed) {
+      setPendingConfirmation({
+        name: parsed.name,
+        value: parsed.value,
+        isInstallment: parsed.isInstallment,
+        currentInstallment: parsed.currentInstallment,
+        totalInstallments: parsed.totalInstallments,
+        step: 'status'
+      });
+
+      const botText = `A compra de **${parsed.name}** no valor de **R$ ${parsed.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}** ${parsed.isInstallment ? `(parcela ${parsed.currentInstallment}/${parsed.totalInstallments})` : ''} já foi paga ou quer adicionar como pendente?`;
+      
+      setTimeout(() => {
+        const newBotMessage: Message = {
+          id: `bot-${Date.now()}`,
+          sender: 'bot',
+          text: botText,
+          timestamp: formatTime(new Date()),
+        };
+        const finalMessages = [...updatedMessages, newBotMessage];
+        setMessages(finalMessages);
+        saveChatHistory(finalMessages);
+        setIsTyping(false);
+      }, 600);
+      return;
+    }
+
+    // 3. Fallback to Gemini Parser
     const parsedResult = await callGeminiParser(userText, messages);
     let botReplyText = '';
     let parsedAccountData: ParsedAccountData | undefined;
@@ -239,7 +553,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
       setMessages(finalMessages);
       saveChatHistory(finalMessages);
       setIsTyping(false);
-    }, 1200);
+    }, 800);
   };
 
   const handleConfirmAccount = (msgId: string) => {
@@ -386,6 +700,45 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
       {/* Input Area */}
       <div className="w-full shrink-0 px-6 py-4 bg-[#FAF8F5] z-20 border-t border-slate-100/50">
+        {pendingConfirmation && (
+          <div className="flex gap-2 mb-3 overflow-x-auto py-1 no-scrollbar justify-center">
+            {pendingConfirmation.step === 'status' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleOptionSelect('pago')}
+                  className="px-4 py-2 bg-[#D8875D] hover:bg-[#c4774f] text-white rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
+                >
+                  Já foi paga
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOptionSelect('pendente')}
+                  className="px-4 py-2 bg-white text-[#D8875D] border border-[#D8875D]/20 hover:bg-[#D8875D]/5 rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
+                >
+                  Adicionar como pendente
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleOptionSelect('dinheiro')}
+                  className="px-4 py-2 bg-[#D8875D] hover:bg-[#c4774f] text-white rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
+                >
+                  Dinheiro / À Vista
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOptionSelect('credito')}
+                  className="px-4 py-2 bg-white text-[#D8875D] border border-[#D8875D]/20 hover:bg-[#D8875D]/5 rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
+                >
+                  Cartão de Crédito
+                </button>
+              </>
+            )}
+          </div>
+        )}
         <form onSubmit={handleSend} className="flex items-center gap-2">
             <div className="w-12 h-12 shrink-0 bg-white rounded-full flex items-center justify-center shadow-[0_4px_15px_rgba(0,0,0,0.03)] border border-slate-100 text-[#D8875D]">
                 <Sparkles className="w-5 h-5" />

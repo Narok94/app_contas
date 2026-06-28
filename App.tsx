@@ -732,6 +732,7 @@ const App: React.FC = () => {
                   selectedDate={selectedDate} setSelectedDate={setSelectedDate} 
                   onOpenMoveModal={() => setIsMoveModalOpen(true)} 
                   categories={categories}
+                  activeGroupId={activeGroupId}
               />
           )}
           {view === 'income' && <IncomeManagement incomes={userIncomes} onAddOrUpdate={(data) => {

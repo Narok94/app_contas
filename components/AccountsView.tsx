@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type Account, AccountStatus, type Income, type User } from '../types';
 import SearchBar from './SearchBar';
@@ -8,7 +8,8 @@ import FloatingCalculator from './FloatingCalculator';
 import { getMonthlyAccounts } from '../utils/accountUtils';
 import { getCategoryIcon } from '../utils/categoryIcons';
 import { format } from 'date-fns';
-import { Tag, Search, Calendar, DollarSign, Repeat, CheckCircle2, Edit2, Trash2, Receipt, Calculator, ArrowRightLeft, MoreVertical } from 'lucide-react';
+import { Tag, Search, Calendar, DollarSign, Repeat, CheckCircle2, Edit2, Trash2, Receipt, Calculator, ArrowRightLeft, MoreVertical, Sparkles } from 'lucide-react';
+import * as dataService from '../services/dataService';
 
 interface AccountsViewProps {
   accounts: Account[];
@@ -22,9 +23,10 @@ interface AccountsViewProps {
   setSelectedDate: (date: Date) => void;
   onOpenMoveModal: () => void;
   categories: string[];
+  activeGroupId?: string;
 }
 
-const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onEditAccount, onDeleteAccount, onToggleStatus, onToggleMultipleStatus, onNotifyWhatsApp, whatsappEnabled, selectedDate, setSelectedDate, onOpenMoveModal, categories }) => {
+const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onEditAccount, onDeleteAccount, onToggleStatus, onToggleMultipleStatus, onNotifyWhatsApp, whatsappEnabled, selectedDate, setSelectedDate, onOpenMoveModal, categories, activeGroupId }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<AccountStatus | 'ALL'>('ALL');
   const [filterCategory, setFilterCategory] = useState('ALL');
@@ -32,6 +34,150 @@ const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onEditAccount, on
   const [filterInstallment, setFilterInstallment] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+
+  // Spreadsheet Tabs: 'principal' (main list) vs 'conversa' (assistant chat captured accounts)
+  const [activeSpreadsheetTab, setActiveSpreadsheetTab] = useState<'principal' | 'conversa'>('principal');
+  const [conversationAccounts, setConversationAccounts] = useState<any[]>([]);
+
+  useEffect(() => {
+    const loadConv = () => {
+      const raw = localStorage.getItem('tatu_conversation_accounts');
+      if (raw) {
+        try {
+          setConversationAccounts(JSON.parse(raw));
+        } catch (e) {
+          setConversationAccounts([]);
+        }
+      } else {
+        setConversationAccounts([]);
+      }
+    };
+    
+    loadConv();
+    window.addEventListener('tatu_conversation_accounts_updated', loadConv);
+    return () => {
+      window.removeEventListener('tatu_conversation_accounts_updated', loadConv);
+    };
+  }, []);
+
+  const handleDeleteConversationItem = (id: string) => {
+    const updated = conversationAccounts.filter(item => item.id !== id);
+    localStorage.setItem('tatu_conversation_accounts', JSON.stringify(updated));
+    setConversationAccounts(updated);
+    window.dispatchEvent(new Event('tatu_conversation_accounts_updated'));
+  };
+
+  const handleCloseConversationTab = async () => {
+    if (conversationAccounts.length === 0) {
+      alert("Nenhuma conta na lista para fechar!");
+      return;
+    }
+
+    try {
+      let creditTotal = 0;
+      let cashTotal = 0;
+      const pendingItems: any[] = [];
+
+      conversationAccounts.forEach(item => {
+        if (item.status === AccountStatus.PENDING) {
+          pendingItems.push(item);
+        } else if (item.status === AccountStatus.PAID) {
+          if (item.paymentMethod === 'credito') {
+            creditTotal += Number(item.value);
+          } else if (item.paymentMethod === 'dinheiro') {
+            cashTotal += Number(item.value);
+          }
+        }
+      });
+
+      // 1. Add all individual pending items to main accounts
+      for (const item of pendingItems) {
+        const newAcc: Account = {
+          id: `acc-conv-pend-${Date.now()}-${Math.random()}`,
+          groupId: activeGroupId || item.groupId || 'jessica-personal',
+          name: item.name,
+          category: '📦 Outros',
+          value: Number(item.value),
+          status: AccountStatus.PENDING,
+          isRecurrent: false,
+          isInstallment: false,
+          paymentDate: new Date().toISOString()
+        };
+        await dataService.addAccount(newAcc);
+      }
+
+      // 2. Sum and add to Credit Card ("Cartão")
+      if (creditTotal > 0) {
+        const existingCard = accounts.find(a => 
+          a.name.toLowerCase() === 'cartão' || 
+          a.name.toLowerCase().includes('cartão')
+        );
+
+        if (existingCard) {
+          const updatedAcc = {
+            ...existingCard,
+            value: Number(existingCard.value) + creditTotal
+          };
+          await dataService.updateAccount(updatedAcc);
+        } else {
+          const newAcc: Account = {
+            id: `acc-conv-card-${Date.now()}`,
+            groupId: activeGroupId || 'jessica-personal',
+            name: 'Cartão',
+            category: '💳 Cartão',
+            value: creditTotal,
+            status: AccountStatus.PENDING,
+            isRecurrent: false,
+            isInstallment: false,
+            paymentDate: new Date().toISOString()
+          };
+          await dataService.addAccount(newAcc);
+        }
+      }
+
+      // 3. Sum and add to "Gastos Mês" (for cash/à vista paid accounts)
+      if (cashTotal > 0) {
+        const existingCash = accounts.find(a => 
+          a.name.toLowerCase() === 'gastos mês' || 
+          a.name.toLowerCase().includes('gastos m')
+        );
+
+        if (existingCash) {
+          const updatedAcc = {
+            ...existingCash,
+            value: Number(existingCash.value) + cashTotal
+          };
+          await dataService.updateAccount(updatedAcc);
+        } else {
+          const newAcc: Account = {
+            id: `acc-conv-cash-${Date.now()}`,
+            groupId: activeGroupId || 'jessica-personal',
+            name: 'Gastos Mês',
+            category: '📦 Outros',
+            value: cashTotal,
+            status: AccountStatus.PAID,
+            isRecurrent: false,
+            isInstallment: false,
+            paymentDate: new Date().toISOString()
+          };
+          await dataService.addAccount(newAcc);
+        }
+      }
+
+      // 4. Clear storage
+      localStorage.removeItem('tatu_conversation_accounts');
+      setConversationAccounts([]);
+      window.dispatchEvent(new Event('tatu_conversation_accounts_updated'));
+
+      // 5. Navigate back to principal tab
+      setActiveSpreadsheetTab('principal');
+
+      alert("Aba fechada com sucesso! As contas de " + (pendingItems.length + (creditTotal > 0 ? 1 : 0) + (cashTotal > 0 ? 1 : 0)) + " transações foram inseridas e consolidadas na planilha!");
+    } catch (err) {
+      console.error("Erro ao fechar aba de conversas:", err);
+      alert("Erro ao consolidar as contas. Tente novamente.");
+    }
+  };
   
   const safeDate = useMemo(() => {
     return selectedDate instanceof Date && !isNaN(selectedDate.getTime()) ? selectedDate : new Date();
@@ -310,73 +456,221 @@ const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onEditAccount, on
             </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-6 pb-24 px-2 sm:px-0">
-            <div className="space-y-6">
-                <AnimatePresence>
-                  {selectedAccountIds.length > 0 && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: -20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -20 }}
-                      className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between shadow-sm"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center font-bold text-xs">
-                          {selectedAccountIds.length}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-primary leading-none">Contas selecionadas</p>
-                          <p className="text-[10px] font-bold text-primary/70 mt-0.5">
-                            Total: {totalSelectedValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => setSelectedAccountIds([])}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase text-text-muted hover:text-text-primary transition-colors"
-                        >
-                          Cancelar
-                        </button>
-                        <button 
-                          onClick={handlePaySelected}
-                          className="px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-bold uppercase shadow-sm hover:bg-primary/90 transition-all flex items-center gap-2"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Marcar como Pago
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="bg-white dark:bg-dark-surface p-2 rounded-xl border border-slate-100 dark:border-dark-border-color shadow-sm">
-                    <SearchBar 
-                        searchTerm={searchTerm} setSearchTerm={setSearchTerm} 
-                        filterStatus={filterStatus} setFilterStatus={setFilterStatus}
-                        filterCategory={filterCategory} setFilterCategory={setFilterCategory}
-                        filterRecurrent={filterRecurrent} setFilterRecurrent={setFilterRecurrent}
-                        filterInstallment={filterInstallment} setFilterInstallment={setFilterInstallment}
-                        onOpenCalculator={() => setIsCalculatorOpen(true)}
-                        categories={categories}
-                    />
-                </div>
-                
-                <FloatingCalculator 
-                    isOpen={isCalculatorOpen} 
-                    onClose={() => setIsCalculatorOpen(false)} 
-                />
-                
-                {renderAccounts(pendingAccounts, 'A Pagar', 'bg-primary')}
-                
-                {renderAccounts(paidAccounts, 'Pago', 'bg-success')}
-                
-                {pendingAccounts.length === 0 && paidAccounts.length === 0 && (
-                    <div className="text-center py-12 bg-white dark:bg-dark-surface rounded-2xl border border-dashed border-slate-200 dark:border-dark-border-color">
-                        <p className="text-text-muted dark:text-dark-text-muted font-bold text-[10px] uppercase tracking-widest">Nada por aqui</p>
-                    </div>
-                )}
-            </div>
+        {/* Tabs Bar */}
+        <div className="flex border border-slate-100 dark:border-dark-border-color bg-white dark:bg-dark-surface p-1 rounded-xl shadow-sm gap-1 mx-2 sm:mx-0">
+          <button
+            onClick={() => setActiveSpreadsheetTab('principal')}
+            className={`flex-1 py-3 px-4 text-center rounded-lg font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              activeSpreadsheetTab === 'principal'
+                ? 'bg-primary/10 text-primary'
+                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+            }`}
+          >
+            📋 Planilha Principal
+          </button>
+          <button
+            onClick={() => setActiveSpreadsheetTab('conversa')}
+            className={`flex-1 py-3 px-4 text-center rounded-lg font-bold text-xs uppercase tracking-wider transition-all relative flex items-center justify-center gap-2 ${
+              activeSpreadsheetTab === 'conversa'
+                ? 'bg-[#D8875D]/10 text-[#D8875D]'
+                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+            }`}
+          >
+            💬 Contas do Assistente
+            {conversationAccounts.length > 0 && (
+              <span className="bg-rose-500 text-white font-black text-[9px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white dark:border-dark-surface animate-pulse">
+                {conversationAccounts.length}
+              </span>
+            )}
+          </button>
         </div>
+
+        {activeSpreadsheetTab === 'principal' ? (
+          <div className="grid grid-cols-1 gap-6 pb-24 px-2 sm:px-0">
+              <div className="space-y-6">
+                  <AnimatePresence>
+                    {selectedAccountIds.length > 0 && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="bg-primary/10 border border-primary/20 p-3 rounded-xl flex items-center justify-between shadow-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center font-bold text-xs">
+                            {selectedAccountIds.length}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-primary leading-none">Contas selecionadas</p>
+                            <p className="text-[10px] font-bold text-primary/70 mt-0.5">
+                              Total: {totalSelectedValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => setSelectedAccountIds([])}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase text-text-muted hover:text-text-primary transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button 
+                            onClick={handlePaySelected}
+                            className="px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-bold uppercase shadow-sm hover:bg-primary/90 transition-all flex items-center gap-2"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Marcar como Pago
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="bg-white dark:bg-dark-surface p-2 rounded-xl border border-slate-100 dark:border-dark-border-color shadow-sm">
+                      <SearchBar 
+                          searchTerm={searchTerm} setSearchTerm={setSearchTerm} 
+                          filterStatus={filterStatus} setFilterStatus={setFilterStatus}
+                          filterCategory={filterCategory} setFilterCategory={setFilterCategory}
+                          filterRecurrent={filterRecurrent} setFilterRecurrent={setFilterRecurrent}
+                          filterInstallment={filterInstallment} setFilterInstallment={setFilterInstallment}
+                          onOpenCalculator={() => setIsCalculatorOpen(true)}
+                          categories={categories}
+                      />
+                  </div>
+                  
+                  <FloatingCalculator 
+                      isOpen={isCalculatorOpen} 
+                      onClose={() => setIsCalculatorOpen(false)} 
+                  />
+                  
+                  {renderAccounts(pendingAccounts, 'A Pagar', 'bg-primary')}
+                  
+                  {renderAccounts(paidAccounts, 'Pago', 'bg-success')}
+                  
+                  {pendingAccounts.length === 0 && paidAccounts.length === 0 && (
+                      <div className="text-center py-12 bg-white dark:bg-dark-surface rounded-2xl border border-dashed border-slate-200 dark:border-dark-border-color">
+                          <p className="text-text-muted dark:text-dark-text-muted font-bold text-[10px] uppercase tracking-widest">Nada por aqui</p>
+                      </div>
+                  )}
+              </div>
+          </div>
+        ) : (
+          <div className="pb-24 px-2 sm:px-0">
+            <div className="bg-white dark:bg-dark-surface p-4 sm:p-6 rounded-2xl border border-slate-100 dark:border-dark-border-color shadow-sm space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-dark-border-color pb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-gray-100 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-[#D8875D]" /> Contas Capturadas na Conversa
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">Estas contas foram anotadas pelo assistente e estão aguardando fechamento para consolidação na planilha principal.</p>
+                </div>
+                {conversationAccounts.length > 0 && (
+                  <button
+                    onClick={handleCloseConversationTab}
+                    className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-black uppercase shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Fechar e Lançar Contas
+                  </button>
+                )}
+              </div>
+
+              {conversationAccounts.length === 0 ? (
+                <div className="text-center py-12 flex flex-col items-center justify-center space-y-3">
+                  <div className="w-16 h-16 bg-slate-50 dark:bg-dark-surface-light rounded-full flex items-center justify-center text-slate-300">
+                    <Receipt className="w-8 h-8" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-500 uppercase tracking-wide">Nenhuma conta capturada ainda</p>
+                  <p className="text-xs text-slate-400 max-w-sm">Converse com o Tatu no chat para registrar novas compras. Exemplo: "teste 999 1/5" ou "lanche 25".</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Consolidation Summary Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="bg-slate-50 dark:bg-dark-surface-light p-3 rounded-xl border border-slate-100 dark:border-dark-border-color">
+                      <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">A somar no Cartão</span>
+                      <p className="text-base font-extrabold text-slate-800 dark:text-slate-200 mt-1 font-mono">
+                        {conversationAccounts
+                          .filter(item => item.status === AccountStatus.PAID && item.paymentMethod === 'credito')
+                          .reduce((sum, item) => sum + Number(item.value), 0)
+                          .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-dark-surface-light p-3 rounded-xl border border-slate-100 dark:border-dark-border-color">
+                      <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">A somar em Gastos Mês</span>
+                      <p className="text-base font-extrabold text-slate-800 dark:text-slate-200 mt-1 font-mono">
+                        {conversationAccounts
+                          .filter(item => item.status === AccountStatus.PAID && item.paymentMethod === 'dinheiro')
+                          .reduce((sum, item) => sum + Number(item.value), 0)
+                          .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-dark-surface-light p-3 rounded-xl border border-slate-100 dark:border-dark-border-color">
+                      <span className="text-[8px] font-black uppercase text-slate-500 tracking-wider">Lançar como Pendentes</span>
+                      <p className="text-base font-extrabold text-slate-800 dark:text-slate-200 mt-1 font-mono">
+                        {conversationAccounts
+                          .filter(item => item.status === AccountStatus.PENDING)
+                          .reduce((sum, item) => sum + Number(item.value), 0)
+                          .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Items List */}
+                  <div className="divide-y divide-slate-100 dark:divide-dark-border-color">
+                    {conversationAccounts.map((item) => (
+                      <div key={item.id} className="py-3 flex items-center justify-between gap-3 group">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-dark-surface-light flex items-center justify-center text-slate-500 text-lg">
+                            📦
+                          </div>
+                          <div>
+                            <p className="font-bold text-xs sm:text-sm text-slate-800 dark:text-gray-100 uppercase tracking-tight">{item.name}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                item.status === AccountStatus.PENDING 
+                                  ? 'bg-slate-100 text-slate-600 dark:bg-dark-surface dark:text-slate-400' 
+                                  : 'bg-slate-100 text-slate-600 dark:bg-dark-surface dark:text-slate-400'
+                              }`}>
+                                {item.status === AccountStatus.PENDING ? 'PENDENTE' : 'PAGO'}
+                              </span>
+                              {item.paymentMethod && (
+                                <span className="text-[8px] font-black text-slate-400 bg-slate-50 dark:bg-dark-surface-light px-1.5 py-0.5 rounded border border-slate-100 dark:border-dark-border-color uppercase">
+                                  {item.paymentMethod === 'credito' ? 'Cartão' : 'Dinheiro'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          <p className="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200 font-mono">
+                            {Number(item.value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </p>
+                          <button
+                            onClick={() => handleDeleteConversationItem(item.id)}
+                            className="w-8 h-8 rounded-lg border border-slate-100 dark:border-dark-border-color text-slate-300 hover:text-red-500 hover:border-red-200 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all flex items-center justify-center"
+                            title="Excluir item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Closure button at the very end */}
+                  <div className="pt-4 border-t border-slate-100 dark:border-dark-border-color flex justify-end">
+                    <button
+                      onClick={handleCloseConversationTab}
+                      className="w-full sm:w-auto px-6 py-3 rounded-xl bg-primary hover:bg-primary/90 text-white font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" /> Fechar Aba e Consolidar Contas
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
     </motion.div>
   );
 };
