@@ -74,6 +74,18 @@ const MobileChat: React.FC<MobileChatProps> = ({
   const conversationAccounts = useMemo(() => {
     return accounts
       .filter((acc) => acc.category?.startsWith("💬 Conversa"))
+      .map((acc) => {
+        let status = acc.status;
+        if (
+          acc.category === "💬 Conversa - Dinheiro" ||
+          acc.category === "💬 Conversa - Crédito"
+        ) {
+          status = AccountStatus.PAID;
+        } else if (acc.category === "💬 Conversa - Pendente") {
+          status = AccountStatus.PENDING;
+        }
+        return { ...acc, status };
+      })
       .sort(
         (a, b) =>
           new Date(b.paymentDate || 0).getTime() -
