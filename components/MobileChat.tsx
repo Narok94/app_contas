@@ -121,15 +121,23 @@ const MobileChat: React.FC<MobileChatProps> = ({
   } | null>(null);
 
   useEffect(() => {
-    const savedChat = localStorage.getItem("tatu_mobile_chat_history");
-    if (savedChat) {
-      try {
-        setMessages(JSON.parse(savedChat));
-      } catch (e) {
+    // One-time clear of assistant chat history today as requested
+    const hasCleared = localStorage.getItem("tatu_clear_assistant_history_2026_06_28");
+    if (!hasCleared) {
+      localStorage.removeItem("tatu_mobile_chat_history");
+      localStorage.setItem("tatu_clear_assistant_history_2026_06_28", "true");
+      loadDefaultWelcome();
+    } else {
+      const savedChat = localStorage.getItem("tatu_mobile_chat_history");
+      if (savedChat) {
+        try {
+          setMessages(JSON.parse(savedChat));
+        } catch (e) {
+          loadDefaultWelcome();
+        }
+      } else {
         loadDefaultWelcome();
       }
-    } else {
-      loadDefaultWelcome();
     }
 
     // Auto focus input when component mounts
