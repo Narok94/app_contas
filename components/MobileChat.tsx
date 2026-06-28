@@ -503,14 +503,13 @@ const MobileChat: React.FC<MobileChatProps> = ({
           systemInstruction: `Você é um assistente financeiro direto e objetivo.
           Categorias disponíveis: ${JSON.stringify(categories)}.
           
-          Regras para despesas:
-          1. Sempre que o usuário registrar uma despesa, verifique se ele informou a forma de pagamento (cartão, dinheiro, pix, etc.).
-          2. Se a forma de pagamento NÃO for informada, retorne a action "ask_info" e no campo "reply" pergunte de forma direta e concisa: "Qual foi a forma de pagamento (cartão, dinheiro, pix)?"
-          3. Se a forma de pagamento FOI informada, retorne a action "add_account". No campo "name", inclua a forma de pagamento, ex: "Supermercado (Cartão)". No campo "reply" confirme apenas com: "Conta adicionada."
+          Sempre que o usuário registrar uma despesa, extraia o nome e o valor e retorne a action "add_account" ignorando a forma de pagamento (o sistema perguntará depois).
+          Se for uma receita, retorne "add_income".
+          Para pedir um resumo financeiro, retorne "summary".
           
           Responda sempre apenas neste JSON:
           {
-            "action": "add_account" | "add_income" | "summary" | "ask_info" | "unknown",
+            "action": "add_account" | "add_income" | "summary" | "unknown",
             "data": { "name": "nome da conta", "value": 150.00, "category": "categoria" },
             "reply": "Resposta direta e curta."
           }
@@ -626,29 +625,28 @@ const MobileChat: React.FC<MobileChatProps> = ({
       const { action, data, reply } = parsedResult;
 
       if (action === "add_account" && data) {
-        const targetPaymentDate = new Date(selectedDate);
-        const newAccountId = `acc-bot-${Date.now()}`;
-        const newAccount: Account = {
-          id: newAccountId,
-          groupId: activeGroupId,
+        setPendingConfirmation({
           name: data.name,
-          category: data.category || "📦 Outros",
           value: Number(data.value),
-          status: AccountStatus.PENDING,
-          isRecurrent: false,
           isInstallment: false,
-          paymentDate: targetPaymentDate.toISOString(),
-        };
-        await dataService.addAccount(newAccount);
-        botReplyText = reply || "Conta adicionada.";
-        parsedAccountData = {
-          id: newAccountId,
-          name: data.name,
-          value: Number(data.value),
-          category: data.category || "📦 Outros",
-          paymentDate: targetPaymentDate.toISOString(),
-          isConfirmed: false,
-        };
+          step: "status",
+        });
+
+        const botText = `A compra de ${data.name} no valor de R$ ${Number(data.value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} já foi paga ou quer adicionar como pendente?`;
+
+        setTimeout(() => {
+          const newBotMessage: Message = {
+            id: `bot-${Date.now()}`,
+            sender: "bot",
+            text: botText,
+            timestamp: formatTime(new Date()),
+          };
+          const finalMessages = [...updatedMessages, newBotMessage];
+          setMessages(finalMessages);
+          saveChatHistory(finalMessages);
+          setIsTyping(false);
+        }, 600);
+        return;
       } else if (action === "add_income" && data) {
         const targetIncomeDate = new Date(selectedDate);
         const newIncome: Income = {
