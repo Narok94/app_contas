@@ -719,7 +719,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full bg-[#fdfbf7] relative font-sans">
+    <div className="flex-1 flex flex-col w-full h-full bg-[#fdfbf7] relative font-sans overflow-hidden">
       {/* Header */}
       <div
         className="bg-[#D8875D] px-4 pb-2 pt-4 flex flex-col gap-3 z-10 shadow-sm shrink-0 rounded-b-3xl"
@@ -784,7 +784,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto px-2 scrollbar-none no-scrollbar relative"
+            className="flex-1 overflow-y-auto px-2 relative"
             style={{
               backgroundImage:
                 "repeating-linear-gradient(transparent, transparent 39px, #cbd5e1 39px, #cbd5e1 40px)",
