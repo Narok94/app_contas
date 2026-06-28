@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Send,
@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  List,
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
 import { type User, type Account, type Income, AccountStatus } from "../types";
