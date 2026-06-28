@@ -720,10 +720,22 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
   return (
     <div className="flex-1 flex flex-col w-full h-full bg-[#fdfbf7] relative font-sans overflow-hidden">
+      <style>{`
+        .notebook-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+        .notebook-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .notebook-scroll::-webkit-scrollbar-thumb {
+          background-color: rgba(216, 135, 93, 0.4);
+          border-radius: 10px;
+        }
+      `}</style>
       {/* Header */}
       <div
-        className="bg-[#D8875D] px-4 pb-2 pt-4 flex flex-col gap-3 z-10 shadow-sm shrink-0 rounded-b-3xl"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}
+        className="bg-[#D8875D] px-4 pb-3 pt-6 flex flex-col gap-3 z-10 shadow-sm shrink-0 rounded-b-3xl"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 12px) + 20px)" }}
       >
         <div className="flex items-center gap-3">
           {onBack && (
@@ -784,7 +796,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto px-2 relative"
+            className="flex-1 overflow-y-auto px-2 relative notebook-scroll"
             style={{
               backgroundImage:
                 "repeating-linear-gradient(transparent, transparent 39px, #cbd5e1 39px, #cbd5e1 40px)",
@@ -793,9 +805,8 @@ const MobileChat: React.FC<MobileChatProps> = ({
               backgroundPosition: "0 28px",
             }}
           >
-            <div className="absolute left-10 top-0 bottom-0 w-[2px] bg-red-300/40 pointer-events-none" />
-
             <div className="pl-12 pr-4 pt-0 relative z-10 min-h-full flex flex-col">
+              <div className="absolute left-10 top-0 bottom-0 w-[2px] bg-red-300/40 pointer-events-none" />
               <AnimatePresence initial={false}>
                 {messages.map((msg) => {
                   const isUser = msg.sender === "user";

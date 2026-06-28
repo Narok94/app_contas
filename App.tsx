@@ -869,7 +869,7 @@ const App: React.FC = () => {
           />
         )}
         <main
-          className={`max-w-[1200px] mx-auto w-full flex-1 flex flex-col ${view === "assistant" && isMobile ? "p-0 h-[100dvh] pb-20 overflow-hidden" : "p-3 sm:p-4 lg:p-6 pb-32"}`}
+          className={`max-w-[1200px] mx-auto w-full flex-1 flex flex-col ${view === "assistant" && isMobile ? "p-0 pb-20 overflow-hidden" : "p-3 sm:p-4 lg:p-6 pb-32"}`}
         >
           {view === "assistant" && isMobile && (
             <div className="flex-1 flex flex-col overflow-hidden relative">
