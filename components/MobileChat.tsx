@@ -205,11 +205,13 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
   // Dual-mode parsing: 100% optimized regex transaction detection
   const tryParseTransaction = (text: string) => {
-    const trimmed = text.trim();
+    let trimmed = text.trim();
+    trimmed = trimmed.replace(/^(comprei|gastei|paguei)\s+/i, "");
 
     // 1. Try installment regex: [name] [value] [current]/[total]
-    // e.g. "teste 999 1/5" or "Compra lanche 25,50 1/3"
-    const installmentRegex = /^(.+?)\s+([\d.,]+)\s+(\d+)\s*[\/\\]\s*(\d+)\s*$/i;
+    // e.g. "teste 999 1/5" or "Compra lanche 25,50 1/3" or "Comprei bala por 5 reais 1/2"
+    const installmentRegex =
+      /^(.*?)\s+(?:por\s+|custou\s+|de\s+)?(?:r\$\s*)?([\d.,]+)(?:\s*(?:reais|conto|pila))?\s*(?:em\s+)?(\d+)\s*[\/\\]\s*(\d+)\s*$/i;
     const instMatch = trimmed.match(installmentRegex);
     if (instMatch) {
       const name = instMatch[1].trim();
@@ -220,7 +222,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
       if (!isNaN(value) && !isNaN(current) && !isNaN(total)) {
         return {
-          name,
+          name: name || "Compra",
           value,
           isInstallment: true,
           currentInstallment: current,
@@ -230,8 +232,9 @@ const MobileChat: React.FC<MobileChatProps> = ({
     }
 
     // 2. Try regular regex: [name] [value]
-    // e.g. "teste 999" or "lanche 25.50"
-    const regularRegex = /^(.+?)\s+([\d.,]+)\s*$/i;
+    // e.g. "teste 999" or "lanche 25.50" or "bala 5 reais"
+    const regularRegex =
+      /^(.*?)\s+(?:por\s+|custou\s+|de\s+)?(?:r\$\s*)?([\d.,]+)(?:\s*(?:reais|conto|pila))?\s*$/i;
     const regMatch = trimmed.match(regularRegex);
     if (regMatch) {
       const name = regMatch[1].trim();
@@ -240,10 +243,23 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
       if (!isNaN(value)) {
         return {
-          name,
+          name: name || "Compra",
           value,
           isInstallment: false,
         };
+      }
+    }
+
+    // 3. Fallback for X reais if first words are comprei, paguei
+    const fallbackMatch = text.match(
+      /^(?:comprei|paguei|gastei)\s+(?:com\s+|um\s+|uma\s+)?(.*?)\s*([\d.,]+)\s*(?:reais|conto|pila)?$/i,
+    );
+    if (fallbackMatch) {
+      const name = fallbackMatch[1].trim();
+      const rawVal = fallbackMatch[2].replace(",", ".");
+      const value = parseFloat(rawVal);
+      if (!isNaN(value)) {
+        return { name: name || "Compra", value, isInstallment: false };
       }
     }
 
@@ -318,15 +334,21 @@ const MobileChat: React.FC<MobileChatProps> = ({
         setPendingConfirmation(null);
 
         setTimeout(() => {
-          const text = current.isInstallment
-            ? `Entendido! O parcelamento de **${current.name}** (${current.currentInstallment}/${current.totalInstallments}) de R$ ${current.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi adicionado como **PENDENTE** diretamente na planilha principal.`
-            : `Entendido! A conta **${current.name}** de R$ ${current.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi adicionada como **PENDENTE** na listagem de contas da conversa.`;
+          const text = "Anotado no caderno:";
 
           const newBotMsg: Message = {
             id: `bot-opt-${Date.now()}`,
             sender: "bot",
             text,
             timestamp: formatTime(new Date()),
+            parsedAccount: {
+              id: `acc-conv-${Date.now()}`,
+              name: current.name,
+              value: current.value,
+              category: "📦 Outros",
+              paymentDate: new Date().toISOString(),
+              isConfirmed: true,
+            },
           };
           const final = [...updatedMessages, newBotMsg];
           setMessages(final);
@@ -356,15 +378,21 @@ const MobileChat: React.FC<MobileChatProps> = ({
         setPendingConfirmation(null);
 
         setTimeout(() => {
-          const text = current.isInstallment
-            ? `Tudo certo! O parcelamento de **${current.name}** (${current.currentInstallment}/${current.totalInstallments}) de R$ ${current.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi adicionado como **PAGO (Dinheiro)** diretamente na planilha principal.`
-            : `Adicionado! A conta **${current.name}** de R$ ${current.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi incluída na listagem de contas da conversa como **Pago no Dinheiro**.`;
+          const text = "Anotado no caderno:";
 
           const newBotMsg: Message = {
             id: `bot-opt-${Date.now()}`,
             sender: "bot",
             text,
             timestamp: formatTime(new Date()),
+            parsedAccount: {
+              id: `acc-conv-${Date.now()}`,
+              name: current.name,
+              value: current.value,
+              category: "💵 Dinheiro",
+              paymentDate: new Date().toISOString(),
+              isConfirmed: true,
+            },
           };
           const final = [...updatedMessages, newBotMsg];
           setMessages(final);
@@ -392,15 +420,21 @@ const MobileChat: React.FC<MobileChatProps> = ({
         setPendingConfirmation(null);
 
         setTimeout(() => {
-          const text = current.isInstallment
-            ? `Tudo certo! O parcelamento de **${current.name}** (${current.currentInstallment}/${current.totalInstallments}) de R$ ${current.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi adicionado como **PAGO (Crédito)** diretamente na planilha principal.`
-            : `Adicionado! A conta **${current.name}** de R$ ${current.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi incluída na listagem de contas da conversa como **Pago no Crédito**.`;
+          const text = "Anotado no caderno:";
 
           const newBotMsg: Message = {
             id: `bot-opt-${Date.now()}`,
             sender: "bot",
             text,
             timestamp: formatTime(new Date()),
+            parsedAccount: {
+              id: `acc-conv-${Date.now()}`,
+              name: current.name,
+              value: current.value,
+              category: "💳 Crédito",
+              paymentDate: new Date().toISOString(),
+              isConfirmed: true,
+            },
           };
           const final = [...updatedMessages, newBotMsg];
           setMessages(final);
@@ -412,9 +446,13 @@ const MobileChat: React.FC<MobileChatProps> = ({
   };
 
   const callGeminiParser = async (text: string, chatHistory: Message[]) => {
-    const apiKey = process.env.API_KEY || "";
+    let apiKey = "";
+    try {
+      apiKey = process.env.API_KEY || "";
+    } catch (e) {}
+
     if (!apiKey) {
-      return { action: "unknown", reply: "Configuração da API ausente." };
+      return null;
     }
     try {
       const ai = new GoogleGenAI({
@@ -430,7 +468,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
         .join("\n");
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         contents: `Histórico recente:\n${historyContext}\n\nMensagem atual do usuário: "${text}"\nAnalise o contexto e a mensagem e extraia a ação.`,
         config: {
           systemInstruction: `Você é um assistente financeiro direto e objetivo.
@@ -533,7 +571,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
         step: "status",
       });
 
-      const botText = `A compra de **${parsed.name}** no valor de **R$ ${parsed.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}** ${parsed.isInstallment ? `(parcela ${parsed.currentInstallment}/${parsed.totalInstallments})` : ""} já foi paga ou quer adicionar como pendente?`;
+      const botText = `A compra de ${parsed.name} no valor de R$ ${parsed.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ${parsed.isInstallment ? `(parcela ${parsed.currentInstallment}/${parsed.totalInstallments})` : ""} já foi paga ou quer adicionar como pendente?`;
 
       setTimeout(() => {
         const newBotMessage: Message = {
@@ -667,18 +705,18 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
       {/* Messages Area - Notebook Lines */}
       <div
-        className="flex-1 overflow-y-auto px-2 space-y-0 scrollbar-none no-scrollbar pb-12 relative"
+        className="flex-1 overflow-y-auto px-2 scrollbar-none no-scrollbar relative"
         style={{
           backgroundImage:
             "repeating-linear-gradient(transparent, transparent 39px, #cbd5e1 39px, #cbd5e1 40px)",
           backgroundSize: "100% 40px",
           backgroundAttachment: "local",
-          backgroundPosition: "0 8px",
+          backgroundPosition: "0 28px",
         }}
       >
         <div className="absolute left-10 top-0 bottom-0 w-[2px] bg-red-300/40 pointer-events-none" />
 
-        <div className="pl-12 pr-4 pt-4 relative z-10 space-y-4">
+        <div className="pl-12 pr-4 pt-0 relative z-10 min-h-full flex flex-col">
           <AnimatePresence initial={false}>
             {messages.map((msg) => {
               const isUser = msg.sender === "user";
@@ -689,9 +727,9 @@ const MobileChat: React.FC<MobileChatProps> = ({
                     key={msg.id}
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="w-full flex justify-end"
+                    className="w-full flex justify-end mb-0"
                   >
-                    <div className="text-[17px] leading-[40px] text-blue-700 font-serif font-medium break-words max-w-[90%] tracking-tight -rotate-1">
+                    <div className="text-[22px] leading-[40px] text-blue-700 font-handwriting break-words max-w-[90%] -rotate-1">
                       {msg.text}
                     </div>
                   </motion.div>
@@ -704,29 +742,29 @@ const MobileChat: React.FC<MobileChatProps> = ({
                   key={msg.id}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="w-full flex flex-col items-start"
+                  className="w-full flex flex-col items-start mb-0"
                 >
-                  <div className="text-[17px] leading-[40px] text-slate-800 font-serif font-medium break-words max-w-[95%]">
+                  <div className="text-[22px] leading-[40px] text-slate-800 font-handwriting break-words max-w-[95%]">
                     {msg.text}
                   </div>
 
                   {msg.parsedAccount &&
                     (msg.parsedAccount.isConfirmed ? (
-                      <div className="w-full max-w-[95%] mt-1 flex justify-between items-end border-b-2 border-slate-400/30 font-serif leading-[40px]">
-                        <span className="font-bold text-slate-800 italic">
-                          {msg.parsedAccount.name}
+                      <div className="w-full max-w-[95%] flex justify-between items-center font-handwriting leading-[40px]">
+                        <span className="text-[22px] text-slate-800">
+                          - {msg.parsedAccount.name}
                         </span>
-                        <span className="font-mono text-slate-800 flex items-center gap-2">
+                        <span className="text-[22px] text-slate-800 flex items-center gap-2">
                           {msg.parsedAccount.value.toLocaleString("pt-BR", {
                             style: "currency",
                             currency: "BRL",
                           })}
-                          <Check className="w-5 h-5 text-emerald-600 mb-1" />
+                          <Check className="w-5 h-5 text-emerald-600" />
                         </span>
                       </div>
                     ) : (
-                      <div className="bg-white/95 p-3 rounded-lg shadow-sm border border-slate-200 w-full max-w-[90%] mt-2 mb-2 rotate-1">
-                        <div className="flex items-center justify-between mb-3">
+                      <div className="bg-white/95 px-3 py-2 rounded-lg shadow-sm border border-slate-200 w-full max-w-[90%] my-0 h-[120px] flex flex-col justify-between rotate-1">
+                        <div className="flex items-center justify-between">
                           <div>
                             <p className="font-bold text-slate-800 text-[15px]">
                               {msg.parsedAccount.name}
@@ -750,14 +788,14 @@ const MobileChat: React.FC<MobileChatProps> = ({
                             onClick={() =>
                               handleEditParsedAccount(msg.parsedAccount!.id)
                             }
-                            className="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-1.5 active:bg-slate-50 transition-colors"
+                            className="flex-1 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-1.5 active:bg-slate-50 transition-colors"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                             Editar
                           </button>
                           <button
                             onClick={() => handleConfirmAccount(msg.id)}
-                            className="flex-1 py-2 rounded-lg font-bold text-[13px] bg-[#D8875D] text-white shadow-sm flex items-center justify-center gap-1.5 active:bg-[#C97A56] transition-colors"
+                            className="flex-1 py-1.5 rounded-lg font-bold text-[13px] bg-[#D8875D] text-white shadow-sm flex items-center justify-center gap-1.5 active:bg-[#C97A56] transition-colors"
                           >
                             <Check className="w-4 h-4" />
                             Registrar
@@ -772,12 +810,12 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
           {isTyping && (
             <div className="flex justify-start w-full">
-              <div className="text-[17px] leading-[40px] text-slate-400 font-serif italic tracking-wider">
+              <div className="text-[22px] leading-[40px] text-slate-400 font-handwriting italic tracking-wider">
                 escrevendo...
               </div>
             </div>
           )}
-          <div ref={messagesEndRef} className="h-4" />
+          <div ref={messagesEndRef} className="h-[40px] shrink-0" />
         </div>
       </div>
 
