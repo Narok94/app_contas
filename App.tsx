@@ -18,7 +18,8 @@ import MoveAccountsModal from './components/MoveAccountsModal';
 import { notifyPaymentViaWhatsApp } from './utils/whatsapp';
 import { isVariableExpense, getMonthlyAccounts } from './utils/accountUtils';
 
-import { Plus, MessageSquare } from 'lucide-react';
+import { Plus, MessageSquare, PieChart, List, LayoutGrid, Settings } from 'lucide-react';
+import MobileChat from './components/MobileChat';
 import WhatsAppAssistant from './components/WhatsAppAssistant';
 
 // isVariableExpense removed as it is now imported from accountUtils
@@ -66,12 +67,11 @@ const App: React.FC = () => {
 
   const constraintsRef = useRef<HTMLDivElement>(null);
 
-  // Redirect to accounts view on mobile devices when logged in (allow other tabs in traditional layout)
   useEffect(() => {
-    if (isMobile && activeGroupId && view !== 'accounts' && view !== 'dashboard' && view !== 'income' && view !== 'login') {
-      setView('accounts');
+    if (!isMobile && view === 'assistant') {
+      setView('dashboard');
     }
-  }, [isMobile, activeGroupId, view]);
+  }, [isMobile, view]);
 
   useEffect(() => {
     const unsubUsers = realtimeService.subscribe('users', setUsers);
@@ -92,7 +92,8 @@ const App: React.FC = () => {
                 setCurrentUser(storedUser);
                 realtimeService.setUser(storedUser.username);
                 setActiveGroupId('jessica-personal');
-                setView(isMobile ? 'accounts' : 'dashboard');
+                const isCurrentlyMobile = window.innerWidth < 640;
+                setView(isCurrentlyMobile ? 'assistant' : 'dashboard');
             } catch (e) { setView('login'); }
         } else { setView('login'); }
         setIsLoading(false);
@@ -164,7 +165,8 @@ const App: React.FC = () => {
   const handleGroupSelect = (groupId: string) => {
     setActiveGroupId(groupId);
     sessionStorage.setItem('app_activeGroupId', groupId);
-    setView(isMobile ? 'accounts' : 'dashboard');
+    const isCurrentlyMobile = window.innerWidth < 640;
+    setView(isCurrentlyMobile ? 'assistant' : 'dashboard');
   };
 
   const handleToggleAccountStatus = (acc: Account) => {
@@ -617,7 +619,7 @@ const App: React.FC = () => {
   if (view === 'login') return <LoginScreen onLogin={handleLogin} onNavigateToRegister={() => {}} />;
   if (!currentUser || !activeGroupId) return <LoginScreen onLogin={handleLogin} onNavigateToRegister={() => {}} />;
 
-  if (isMobile && isChatMode) {
+  if (!isMobile && isChatMode) {
     return (
       <div className="fixed inset-0 h-[100dvh] w-full bg-[#efeae2] dark:bg-[#0b141a] overflow-hidden flex flex-col z-50">
         <WhatsAppAssistant
@@ -633,8 +635,33 @@ const App: React.FC = () => {
     );
   }
 
+  // Render bottom nav for mobile
+  const renderMobileBottomNav = () => {
+    if (!isMobile || view === 'login' || view === 'assistant') return null;
+    return (
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-6 py-2 flex justify-between items-center z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] h-20">
+        <button onClick={() => setView('dashboard')} className={`flex flex-col items-center gap-1 ${view === 'dashboard' ? 'text-[#D8875D]' : 'text-slate-400'}`}>
+          <PieChart className="w-6 h-6" />
+          <span className="text-[10px] font-semibold">Resumo</span>
+        </button>
+        <button onClick={() => setView('assistant')} className={`flex flex-col items-center gap-1 ${view === 'assistant' ? 'text-[#D8875D]' : 'text-slate-400'}`}>
+          <List className="w-6 h-6" />
+          <span className="text-[10px] font-semibold">Contas</span>
+        </button>
+        <button onClick={() => setView('accounts')} className={`flex flex-col items-center gap-1 ${view === 'accounts' ? 'text-[#D8875D]' : 'text-slate-400'}`}>
+          <LayoutGrid className="w-6 h-6" />
+          <span className="text-[10px] font-semibold">Planilhas</span>
+        </button>
+        <button onClick={() => setIsSettingsModalOpen(true)} className="flex flex-col items-center gap-1 text-slate-400">
+          <Settings className="w-6 h-6" />
+          <span className="text-[10px] font-semibold">Ajustes</span>
+        </button>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-background text-text-primary dark:bg-dark-background dark:text-dark-text-primary relative overflow-x-hidden">
+    <div className={`${isMobile && view === 'assistant' ? 'h-[100dvh] w-full overflow-hidden' : 'min-h-[100dvh] w-full'} flex flex-col bg-background text-text-primary dark:bg-dark-background dark:text-dark-text-primary relative overflow-x-hidden ${isMobile && view !== 'assistant' ? 'pb-20' : ''}`}>
       {/* Decorative Background Elements (mostly visible in dark mode, extremely subtle in light) */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] bg-primary/5 dark:bg-primary/30 rounded-full blur-[150px] animate-pulse transition-colors duration-1000" />
@@ -643,18 +670,34 @@ const App: React.FC = () => {
         <div className="absolute top-[40%] right-[20%] w-[25%] h-[25%] bg-success/5 dark:bg-emerald-500/20 rounded-full blur-[120px] animate-pulse transition-colors duration-1000" style={{ animationDelay: '4s' }} />
       </div>
 
-      <div className="relative z-10">
-        <Header 
-          currentUser={currentUser} 
-          onSettingsClick={() => setIsSettingsModalOpen(true)} 
-          onLogout={handleLogout} 
-          activeView={view}
-          onViewChange={setView}
-          isAdmin={currentUser.role === Role.ADMIN}
-          onAddClick={() => setIsSelectionModalOpen(true)}
-          mobileStats={mobileStats}
-        />
-        <main className="p-3 sm:p-4 lg:p-6 max-w-[1200px] mx-auto pb-32">
+      <div className="relative z-10 flex-1 flex flex-col">
+        {!isMobile && (
+          <Header 
+            currentUser={currentUser} 
+            onSettingsClick={() => setIsSettingsModalOpen(true)} 
+            onLogout={handleLogout} 
+            activeView={view}
+            onViewChange={setView}
+            isAdmin={currentUser.role === Role.ADMIN}
+            onAddClick={() => setIsSelectionModalOpen(true)}
+            mobileStats={mobileStats}
+          />
+        )}
+        <main className={`max-w-[1200px] mx-auto w-full flex-1 flex flex-col ${view === 'assistant' && isMobile ? 'p-0 h-[100dvh]' : 'p-3 sm:p-4 lg:p-6 pb-32'}`}>
+          {view === 'assistant' && isMobile && (
+            <div className="flex-1 flex flex-col">
+              <MobileChat
+                currentUser={currentUser}
+                activeGroupId={activeGroupId}
+                accounts={userAccounts}
+                incomes={userIncomes}
+                categories={categories}
+                selectedDate={selectedDate}
+                onEditAccount={(acc) => { setAccountToEdit(acc); setIsAccountModalOpen(true); }}
+                onBack={() => setView('dashboard')}
+              />
+            </div>
+          )}
           {view === 'dashboard' && (
               <Dashboard 
                   accounts={userAccounts} 
@@ -696,25 +739,26 @@ const App: React.FC = () => {
               else dataService.addIncome({...data, date: new Date().toISOString(), id: `inc-${Date.now()}`} as any);
           }} onDelete={(id) => dataService.deleteIncome(id)} activeGroupId={activeGroupId} />}
         </main>
+        {renderMobileBottomNav()}
         <div ref={constraintsRef} className="fixed inset-0 pointer-events-none z-40" />
-        {isMobile && currentUser && activeGroupId && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        {isMobile && currentUser && activeGroupId && view !== 'assistant' && (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
             <button
               onClick={() => {
                 setAccountToEdit(null);
                 setIsAccountModalOpen(true);
               }}
-              className="flex items-center justify-center w-14 h-14 bg-primary dark:bg-primary text-white rounded-full shadow-[0_8px_30px_rgba(99,102,241,0.5)] active:scale-95 transition-all border-[3px] border-white dark:border-[#0B0E14] hover:bg-opacity-95"
+              className="flex items-center justify-center w-14 h-14 bg-[#D8875D] text-white rounded-full shadow-[0_4px_15px_rgba(216,135,93,0.4)] active:scale-95 transition-all border-4 border-white"
               title="Adicionar Conta"
             >
               <Plus className="w-7 h-7" strokeWidth={3.5} />
             </button>
           </div>
         )}
-        {isMobile && !isChatMode && (
+        {!isMobile && (
           <button
             onClick={() => setIsChatMode(true)}
-            className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 bg-[#00a884] text-white rounded-full shadow-[0_8px_30px_rgba(0,168,132,0.4)] active:scale-95 transition-all border-[3px] border-white dark:border-[#0B0E14] hover:bg-opacity-95 pointer-events-auto"
+            className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 bg-[#D8875D] text-white rounded-full shadow-[0_4px_15px_rgba(216,135,93,0.4)] active:scale-95 transition-all border-[3px] border-white pointer-events-auto"
             title="Conversar com o Bot"
           >
             <MessageSquare className="w-6 h-6" />
