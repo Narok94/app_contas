@@ -72,8 +72,24 @@ const MobileChat: React.FC<MobileChatProps> = ({
   const [activeTab, setActiveTab] = useState<"chat" | "contas">("chat");
 
   const conversationAccounts = useMemo(() => {
+    const selYear = selectedDate.getFullYear();
+    const selMonth = selectedDate.getMonth();
+
     return accounts
-      .filter((acc) => acc.category?.startsWith("💬 Conversa"))
+      .filter((acc) => {
+        // Show temporary conversation accounts (all of them)
+        if (acc.category?.startsWith("💬 Conversa")) {
+          return true;
+        }
+        // Also show installment accounts added by the bot/chat for the selected month
+        if (acc.id?.startsWith("acc-bot-") || acc.id?.includes("-bot-")) {
+          if (acc.paymentDate) {
+            const d = new Date(acc.paymentDate);
+            return d.getFullYear() === selYear && d.getMonth() === selMonth;
+          }
+        }
+        return false;
+      })
       .map((acc) => {
         let status = acc.status;
         if (
@@ -91,7 +107,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
           new Date(b.paymentDate || 0).getTime() -
           new Date(a.paymentDate || 0).getTime(),
       );
-  }, [accounts]);
+  }, [accounts, selectedDate]);
 
   // Interactive transaction state machine
   const [pendingConfirmation, setPendingConfirmation] = useState<{
@@ -604,28 +620,25 @@ const MobileChat: React.FC<MobileChatProps> = ({
         AccountStatus.PENDING,
       );
 
-      // 2. Clear all temporary conversation accounts (starts with "💬 Conversa")
-      const conversationAccs = accounts.filter((acc) =>
-        acc.category?.startsWith("💬 Conversa"),
-      );
-      for (const acc of conversationAccs) {
-        try {
-          await dataService.deleteAccount(acc.id);
-        } catch (err) {
-          console.error("Erro ao deletar conta temporaria:", err);
-        }
-      }
-
-      // 3. WIPE the messages and save the fresh confirmation message!
-      const successBotMsg: Message = {
-        id: `bot-clear-${Date.now()}`,
-        sender: "bot",
-        text: `Sua compra de *${parsedInstallment.name}* no valor total de R$ ${parsedInstallment.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi dividida em *${parsedInstallment.totalInstallments} parcelas de R$ ${parsedInstallment.installmentValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}* e adicionada como *Pendente* no seu contas principal.\n\n✨ Todo o histórico de conversa e rascunhos de contas anteriores foram zerados com sucesso!`,
+      // 2. Keep other conversation drafts so the user doesn't lose them!
+      // 3. Append the user message and the bot's success message to the chat history (do NOT wipe it!)
+      const newUserMessage: Message = {
+        id: `user-${Date.now()}`,
+        sender: "user",
+        text: userText,
         timestamp: formatTime(new Date()),
       };
 
-      setMessages([successBotMsg]);
-      saveChatHistory([successBotMsg]);
+      const successBotMsg: Message = {
+        id: `bot-inst-${Date.now()}`,
+        sender: "bot",
+        text: `Sua compra de *${parsedInstallment.name}* no valor total de R$ ${parsedInstallment.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi dividida em *${parsedInstallment.totalInstallments} parcelas de R$ ${parsedInstallment.installmentValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}* e adicionada como *Pendente* no seu contas principal.`,
+        timestamp: formatTime(new Date()),
+      };
+
+      const finalMessages = [...messages, newUserMessage, successBotMsg];
+      setMessages(finalMessages);
+      saveChatHistory(finalMessages);
       setPendingConfirmation(null);
       setIsTyping(false);
       return;
