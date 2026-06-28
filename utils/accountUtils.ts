@@ -12,6 +12,7 @@ export const isVariableExpense = (acc: Partial<Account>) => {
 };
 
 export const getMonthlyAccounts = (accounts: Account[], date: Date) => {
+    const mainAccounts = accounts.filter(acc => !acc.category?.startsWith("💬 Conversa"));
     const selectedYear = date.getFullYear();
     const selectedMonth = date.getMonth();
     const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
@@ -39,17 +40,17 @@ export const getMonthlyAccounts = (accounts: Account[], date: Date) => {
         return { year: d.getFullYear(), month: d.getMonth() };
     };
 
-    const physicalRecords = accounts.filter(acc => {
+    const physicalRecords = mainAccounts.filter(acc => {
         const dateStr = getSafeDateStr(acc);
         return dateStr?.startsWith(monthKey);
     });
     
-    const orphanAccounts = accounts.filter(acc => {
+    const orphanAccounts = mainAccounts.filter(acc => {
         const dateStr = getSafeDateStr(acc);
         return !dateStr && !acc.isRecurrent && !acc.isInstallment;
     });
 
-    const recurrentTemplates = accounts.filter(acc => {
+    const recurrentTemplates = mainAccounts.filter(acc => {
         const dateStr = getSafeDateStr(acc);
         return acc.isRecurrent && 
         !dateStr &&
@@ -59,7 +60,7 @@ export const getMonthlyAccounts = (accounts: Account[], date: Date) => {
     const projectedInstallments: Account[] = [];
     const seriesAnchors = new Map<string, Account>();
     
-    accounts.forEach(acc => {
+    mainAccounts.forEach(acc => {
         const dateStr = getSafeDateStr(acc);
         if (acc.isInstallment && dateStr) {
             // Chave estável para agrupamento, evitando colisão entre grupos e parcelamentos distintos
@@ -98,7 +99,7 @@ export const getMonthlyAccounts = (accounts: Account[], date: Date) => {
             const targetInstallment = currentInst + monthDiff;
             
             // Filtro preciso de itens da própria série de parcelas
-            const sameSeriesAccounts = accounts.filter(a => {
+            const sameSeriesAccounts = mainAccounts.filter(a => {
                 if (acc.installmentId) {
                     return a.installmentId === acc.installmentId;
                 } else {
@@ -138,7 +139,7 @@ export const getMonthlyAccounts = (accounts: Account[], date: Date) => {
         }
     });
 
-    const overdueRecords = accounts.filter(acc => {
+    const overdueRecords = mainAccounts.filter(acc => {
         const dateStr = getSafeDateStr(acc);
         if (!dateStr || acc.status === AccountStatus.PAID || acc.id?.toString().startsWith('projected-') || acc.isInstallment || acc.isRecurrent) return false;
         

@@ -9,5 +9,14 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "query-accounts.ts",
+    "test-all-endpoints.ts",
+    "test-filter.ts",
+    "test2.ts",
+    "query-users.ts",
+    "check-db2.ts",
+    "seed-custom.ts"
+  ]
 }

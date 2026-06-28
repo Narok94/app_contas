@@ -162,33 +162,39 @@ const MobileChat: React.FC<MobileChatProps> = ({
     );
   };
 
-  // Helper to add to temporary list ("Contas da Conversa") in localStorage
-  const addConversationAccount = (
+  // Helper to add to temporary list ("Contas da Conversa") in Database
+  const addConversationAccount = async (
     name: string,
     value: number,
     status: AccountStatus,
     paymentMethod?: "dinheiro" | "credito",
   ) => {
-    let list: any[] = [];
-    const raw = localStorage.getItem("tatu_conversation_accounts");
-    if (raw) {
-      try {
-        list = JSON.parse(raw);
-      } catch (e) {}
+    let category = "💬 Conversa - Pendente";
+    if (status === AccountStatus.PAID) {
+      if (paymentMethod === "dinheiro") {
+        category = "💬 Conversa - Dinheiro";
+      } else if (paymentMethod === "credito") {
+        category = "💬 Conversa - Crédito";
+      }
     }
-    const newItem = {
+
+    const newAccount: Account = {
       id: `conv-acc-${Date.now()}-${Math.random()}`,
       groupId: activeGroupId,
       name,
+      category,
       value,
-      category: "📦 Outros",
-      status,
-      paymentMethod,
-      createdAt: new Date().toISOString(),
+      status: AccountStatus.PENDING,
+      isRecurrent: false,
+      isInstallment: false,
+      paymentDate: new Date().toISOString(),
     };
-    list.push(newItem);
-    localStorage.setItem("tatu_conversation_accounts", JSON.stringify(list));
-    window.dispatchEvent(new Event("tatu_conversation_accounts_updated"));
+
+    try {
+      await dataService.addAccount(newAccount);
+    } catch (err) {
+      console.error("Erro ao adicionar conta de conversa:", err);
+    }
   };
 
   // Helper to add installment series directly to main accounts database
@@ -347,7 +353,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
             AccountStatus.PENDING,
           );
         } else {
-          addConversationAccount(
+          await addConversationAccount(
             current.name,
             current.value,
             AccountStatus.PENDING,
@@ -390,7 +396,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
             AccountStatus.PAID,
           );
         } else {
-          addConversationAccount(
+          await addConversationAccount(
             current.name,
             current.value,
             AccountStatus.PAID,
@@ -432,7 +438,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
             AccountStatus.PAID,
           );
         } else {
-          addConversationAccount(
+          await addConversationAccount(
             current.name,
             current.value,
             AccountStatus.PAID,

@@ -37,34 +37,41 @@ const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onEditAccount, on
 
   // Spreadsheet Tabs: 'principal' (main list) vs 'conversa' (assistant chat captured accounts)
   const [activeSpreadsheetTab, setActiveSpreadsheetTab] = useState<'principal' | 'conversa'>('principal');
-  const [conversationAccounts, setConversationAccounts] = useState<any[]>([]);
 
-  useEffect(() => {
-    const loadConv = () => {
-      const raw = localStorage.getItem('tatu_conversation_accounts');
-      if (raw) {
-        try {
-          setConversationAccounts(JSON.parse(raw));
-        } catch (e) {
-          setConversationAccounts([]);
+  const conversationAccounts = useMemo(() => {
+    return accounts
+      .filter(acc => acc.category?.startsWith("💬 Conversa"))
+      .map(acc => {
+        let status = AccountStatus.PENDING;
+        let paymentMethod: 'dinheiro' | 'credito' | undefined = undefined;
+
+        if (acc.category === "💬 Conversa - Dinheiro") {
+          status = AccountStatus.PAID;
+          paymentMethod = 'dinheiro';
+        } else if (acc.category === "💬 Conversa - Crédito") {
+          status = AccountStatus.PAID;
+          paymentMethod = 'credito';
         }
-      } else {
-        setConversationAccounts([]);
-      }
-    };
-    
-    loadConv();
-    window.addEventListener('tatu_conversation_accounts_updated', loadConv);
-    return () => {
-      window.removeEventListener('tatu_conversation_accounts_updated', loadConv);
-    };
-  }, []);
 
-  const handleDeleteConversationItem = (id: string) => {
-    const updated = conversationAccounts.filter(item => item.id !== id);
-    localStorage.setItem('tatu_conversation_accounts', JSON.stringify(updated));
-    setConversationAccounts(updated);
-    window.dispatchEvent(new Event('tatu_conversation_accounts_updated'));
+        return {
+          id: acc.id,
+          groupId: acc.groupId,
+          name: acc.name,
+          value: acc.value,
+          category: "📦 Outros",
+          status,
+          paymentMethod,
+          createdAt: acc.paymentDate,
+        };
+      });
+  }, [accounts]);
+
+  const handleDeleteConversationItem = async (id: string) => {
+    try {
+      await dataService.deleteAccount(id);
+    } catch (err) {
+      console.error("Erro ao deletar item da conversa:", err);
+    }
   };
 
   const handleCloseConversationTab = async () => {
@@ -164,10 +171,10 @@ const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onEditAccount, on
         }
       }
 
-      // 4. Clear storage
-      localStorage.removeItem('tatu_conversation_accounts');
-      setConversationAccounts([]);
-      window.dispatchEvent(new Event('tatu_conversation_accounts_updated'));
+      // 4. Delete the temporary conversation accounts from DB!
+      for (const item of conversationAccounts) {
+        await dataService.deleteAccount(item.id);
+      }
 
       // 5. Navigate back to principal tab
       setActiveSpreadsheetTab('principal');
