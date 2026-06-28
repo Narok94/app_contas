@@ -197,7 +197,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
       name,
       category,
       value,
-      status: AccountStatus.PENDING,
+      status,
       isRecurrent: false,
       isInstallment: false,
       paymentDate: new Date().toISOString(),
@@ -230,7 +230,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
       const installmentAccount: Account = {
         id: `acc-bot-${Date.now()}-${i}`,
         groupId: activeGroupId,
-        name: name,
+        name: name.includes("/") ? name : `${name} ${i}/${total}`,
         category: "📦 Outros",
         value: value,
         isRecurrent: false,
@@ -243,6 +243,41 @@ const MobileChat: React.FC<MobileChatProps> = ({
       };
       await dataService.addAccount(installmentAccount);
     }
+  };
+
+  // Parses natural language installment sentences like "comprei uma geladeira no valor de 1000 e parcelei em 2 vezes"
+  const tryParseInstallmentSentence = (text: string) => {
+    const lower = text.toLowerCase().trim();
+
+    if (!lower.includes("parcel") && !lower.includes("vezes") && !lower.includes("x")) {
+      return null;
+    }
+
+    // Regex 1: "comprei uma geladeira no valor de 1000 e parcelei em 2 vezes"
+    const regex1 = /(?:comprei|gastei|paguei)?\s*(?:um|uma)?\s*([a-zA-Z0-9\sÀ-ÿ\-]+)\s+(?:no\s+valor\s+de|valor|por|de)?\s*(?:r\$\s*)?([\d.,]+)\s*(?:reais)?\s*(?:e\s+)?(?:parcelei\s+)?(?:em|de)\s+(\d+)\s*(?:vezes|parcelas|x)/i;
+
+    // Regex 2: "geladeira de 1000 em 2 vezes" or "geladeira 1000 em 2x"
+    const regex2 = /([a-zA-Z0-9\sÀ-ÿ\-]+)\s+(?:de|por|valor)?\s*(?:r\$\s*)?([\d.,]+)\s+(?:em\s+)?(\d+)\s*(?:vezes|parcelas|x)/i;
+
+    const match = lower.match(regex1) || lower.match(regex2);
+    if (match) {
+      let name = match[1].trim();
+      name = name.replace(/^(comprei|gastei|paguei|um|uma|o|a|de)\s+/i, "").trim();
+
+      const rawVal = match[2].replace(/\./g, "").replace(",", ".");
+      const totalValue = parseFloat(rawVal);
+      const totalInstallments = parseInt(match[3], 10);
+
+      if (!isNaN(totalValue) && !isNaN(totalInstallments) && totalInstallments > 0) {
+        return {
+          name: name || "Compra parcelada",
+          totalValue,
+          totalInstallments,
+          installmentValue: Number((totalValue / totalInstallments).toFixed(2)),
+        };
+      }
+    }
+    return null;
   };
 
   // Dual-mode parsing: 100% optimized regex transaction detection
@@ -544,6 +579,45 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
     const userText = inputValue;
     setInputValue("");
+
+    // Check for direct installment sentence parsing
+    const parsedInstallment = tryParseInstallmentSentence(userText);
+    if (parsedInstallment) {
+      // 1. Add direct installments to database as PENDING
+      await handleAddInstallmentDirectly(
+        parsedInstallment.name,
+        parsedInstallment.installmentValue,
+        1,
+        parsedInstallment.totalInstallments,
+        AccountStatus.PENDING,
+      );
+
+      // 2. Clear all temporary conversation accounts (starts with "💬 Conversa")
+      const conversationAccs = accounts.filter((acc) =>
+        acc.category?.startsWith("💬 Conversa"),
+      );
+      for (const acc of conversationAccs) {
+        try {
+          await dataService.deleteAccount(acc.id);
+        } catch (err) {
+          console.error("Erro ao deletar conta temporaria:", err);
+        }
+      }
+
+      // 3. WIPE the messages and save the fresh confirmation message!
+      const successBotMsg: Message = {
+        id: `bot-clear-${Date.now()}`,
+        sender: "bot",
+        text: `Sua compra de *${parsedInstallment.name}* no valor total de R$ ${parsedInstallment.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} foi dividida em *${parsedInstallment.totalInstallments} parcelas de R$ ${parsedInstallment.installmentValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}* e adicionada como *Pendente* no seu contas principal.\n\n✨ Todo o histórico de conversa e rascunhos de contas anteriores foram zerados com sucesso!`,
+        timestamp: formatTime(new Date()),
+      };
+
+      setMessages([successBotMsg]);
+      saveChatHistory([successBotMsg]);
+      setPendingConfirmation(null);
+      setIsTyping(false);
+      return;
+    }
 
     const newUserMessage: Message = {
       id: `user-${Date.now()}`,
@@ -1032,7 +1106,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
                     <div className="flex justify-between items-center relative z-0">
                       <div>
                         <p
-                          className={`font-bold text-[15px] ${isPaid ? "text-slate-500" : "text-slate-800"}`}
+                          className={`font-bold text-[15px] ${isPaid ? "text-slate-400 line-through decoration-slate-400/70" : "text-slate-800"}`}
                         >
                           {acc.name}
                         </p>
@@ -1047,7 +1121,7 @@ const MobileChat: React.FC<MobileChatProps> = ({
                       </div>
                       <div className="text-right">
                         <p
-                          className={`font-bold text-[16px] ${isPaid ? "text-slate-500" : "text-slate-800"}`}
+                          className={`font-bold text-[16px] ${isPaid ? "text-slate-400 line-through decoration-slate-400/70" : "text-slate-800"}`}
                         >
                           {acc.value.toLocaleString("pt-BR", {
                             style: "currency",
