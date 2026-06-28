@@ -68,6 +68,18 @@ const MobileChat: React.FC<MobileChatProps> = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [activeTab, setActiveTab] = useState<"chat" | "contas">("chat");
+
+  const conversationAccounts = useMemo(() => {
+    return accounts
+      .filter((acc) => acc.category?.startsWith("💬 Conversa"))
+      .sort(
+        (a, b) =>
+          new Date(b.paymentDate || 0).getTime() -
+          new Date(a.paymentDate || 0).getTime(),
+      );
+  }, [accounts]);
+
   // Interactive transaction state machine
   const [pendingConfirmation, setPendingConfirmation] = useState<{
     name: string;
@@ -709,239 +721,334 @@ const MobileChat: React.FC<MobileChatProps> = ({
     <div className="flex-1 flex flex-col w-full bg-[#fdfbf7] relative font-sans">
       {/* Header */}
       <div
-        className="bg-[#D8875D] px-4 pb-4 flex items-center gap-3 z-10 shadow-sm shrink-0 rounded-b-3xl"
+        className="bg-[#D8875D] px-4 pb-2 pt-4 flex flex-col gap-3 z-10 shadow-sm shrink-0 rounded-b-3xl"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 1rem)" }}
       >
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="w-10 h-10 flex items-center justify-center shrink-0 rounded-full text-white active:bg-white/10 transition-colors"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-        )}
-        <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
-          <Sparkles className="w-5 h-5 text-white" />
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="w-10 h-10 flex items-center justify-center shrink-0 rounded-full text-white active:bg-white/10 transition-colors"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+          )}
+          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shrink-0">
+            <Sparkles className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1">
+            <h1 className="text-white font-bold text-lg leading-tight">
+              Caderno do Tatu
+            </h1>
+            <p className="text-white/80 text-xs font-medium">
+              Suas anotações financeiras
+            </p>
+          </div>
         </div>
-        <div className="flex-1">
-          <h1 className="text-white font-bold text-lg leading-tight">
-            Caderno do Tatu
-          </h1>
-          <p className="text-white/80 text-xs font-medium">
-            Suas anotações financeiras
-          </p>
+
+        <div className="flex bg-white/20 p-1 rounded-xl">
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`flex-1 py-1.5 rounded-lg text-sm font-bold transition-all ${
+              activeTab === "chat"
+                ? "bg-white text-[#D8875D] shadow-sm"
+                : "text-white/80 hover:text-white"
+            }`}
+          >
+            Histórico
+          </button>
+          <button
+            onClick={() => setActiveTab("contas")}
+            className={`flex-1 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+              activeTab === "contas"
+                ? "bg-white text-[#D8875D] shadow-sm"
+                : "text-white/80 hover:text-white"
+            }`}
+          >
+            Contas
+            {conversationAccounts.length > 0 && (
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none ${activeTab === "contas" ? "bg-[#D8875D] text-white" : "bg-white text-[#D8875D]"}`}
+              >
+                {conversationAccounts.length}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Messages Area - Notebook Lines */}
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-2 scrollbar-none no-scrollbar relative"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(transparent, transparent 39px, #cbd5e1 39px, #cbd5e1 40px)",
-          backgroundSize: "100% 40px",
-          backgroundAttachment: "local",
-          backgroundPosition: "0 28px",
-        }}
-      >
-        <div className="absolute left-10 top-0 bottom-0 w-[2px] bg-red-300/40 pointer-events-none" />
+      {activeTab === "chat" ? (
+        <>
+          {/* Messages Area - Notebook Lines */}
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto px-2 scrollbar-none no-scrollbar relative"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(transparent, transparent 39px, #cbd5e1 39px, #cbd5e1 40px)",
+              backgroundSize: "100% 40px",
+              backgroundAttachment: "local",
+              backgroundPosition: "0 28px",
+            }}
+          >
+            <div className="absolute left-10 top-0 bottom-0 w-[2px] bg-red-300/40 pointer-events-none" />
 
-        <div className="pl-12 pr-4 pt-0 relative z-10 min-h-full flex flex-col">
-          <AnimatePresence initial={false}>
-            {messages.map((msg) => {
-              const isUser = msg.sender === "user";
+            <div className="pl-12 pr-4 pt-0 relative z-10 min-h-full flex flex-col">
+              <AnimatePresence initial={false}>
+                {messages.map((msg) => {
+                  const isUser = msg.sender === "user";
 
-              if (isUser) {
-                return (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="w-full flex justify-end mb-0"
-                  >
-                    <div className="text-[22px] leading-[40px] text-blue-700 font-handwriting break-words max-w-[90%] -rotate-1">
-                      {msg.text}
-                    </div>
-                  </motion.div>
-                );
-              }
+                  if (isUser) {
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="w-full flex justify-end mb-0"
+                      >
+                        <div className="text-[22px] leading-[40px] text-blue-700 font-handwriting break-words max-w-[90%] -rotate-1">
+                          {msg.text}
+                        </div>
+                      </motion.div>
+                    );
+                  }
 
-              // Bot Message
-              return (
-                <motion.div
-                  key={msg.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="w-full flex flex-col items-start mb-0"
-                >
-                  <div className="text-[22px] leading-[40px] text-slate-800 font-handwriting break-words max-w-[95%]">
-                    {msg.text}
-                  </div>
-
-                  {msg.parsedAccount &&
-                    (msg.parsedAccount.isConfirmed ? (
-                      <div className="w-full max-w-[95%] flex justify-between items-center font-handwriting leading-[40px]">
-                        <span className="text-[22px] text-slate-800">
-                          - {msg.parsedAccount.name}
-                        </span>
-                        <span className="text-[22px] text-slate-800 flex items-center gap-2">
-                          {msg.parsedAccount.value.toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })}
-                          <Check className="w-5 h-5 text-emerald-600" />
-                        </span>
+                  // Bot Message
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="w-full flex flex-col items-start mb-0"
+                    >
+                      <div className="text-[22px] leading-[40px] text-slate-800 font-handwriting break-words max-w-[95%]">
+                        {msg.text}
                       </div>
-                    ) : (
-                      <div className="bg-white/95 px-3 py-2 rounded-lg shadow-sm border border-slate-200 w-full max-w-[90%] my-0 h-[120px] flex flex-col justify-between rotate-1">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-bold text-slate-800 text-[15px]">
-                              {msg.parsedAccount.name}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {msg.parsedAccount.category.substring(2).trim()}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-slate-800 text-[16px]">
+
+                      {msg.parsedAccount &&
+                        (msg.parsedAccount.isConfirmed ? (
+                          <div className="w-full max-w-[95%] flex justify-between items-center font-handwriting leading-[40px]">
+                            <span className="text-[22px] text-slate-800">
+                              - {msg.parsedAccount.name}
+                            </span>
+                            <span className="text-[22px] text-slate-800 flex items-center gap-2">
                               {msg.parsedAccount.value.toLocaleString("pt-BR", {
                                 style: "currency",
                                 currency: "BRL",
                               })}
-                            </p>
+                              <Check className="w-5 h-5 text-emerald-600" />
+                            </span>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="bg-white/95 px-3 py-2 rounded-lg shadow-sm border border-slate-200 w-full max-w-[90%] my-0 h-[120px] flex flex-col justify-between rotate-1">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-slate-800 text-[15px]">
+                                  {msg.parsedAccount.name}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {msg.parsedAccount.category
+                                    .substring(2)
+                                    .trim()}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-slate-800 text-[16px]">
+                                  {msg.parsedAccount.value.toLocaleString(
+                                    "pt-BR",
+                                    {
+                                      style: "currency",
+                                      currency: "BRL",
+                                    },
+                                  )}
+                                </p>
+                              </div>
+                            </div>
 
-                        <div className="flex gap-2 w-full pt-1">
-                          <button
-                            onClick={() =>
-                              handleEditParsedAccount(msg.parsedAccount!.id)
-                            }
-                            className="flex-1 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-1.5 active:bg-slate-50 transition-colors"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleConfirmAccount(msg.id)}
-                            className="flex-1 py-1.5 rounded-lg font-bold text-[13px] bg-[#D8875D] text-white shadow-sm flex items-center justify-center gap-1.5 active:bg-[#C97A56] transition-colors"
-                          >
-                            <Check className="w-4 h-4" />
-                            Registrar
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </motion.div>
-              );
-            })}
+                            <div className="flex gap-2 w-full pt-1">
+                              <button
+                                onClick={() =>
+                                  handleEditParsedAccount(msg.parsedAccount!.id)
+                                }
+                                className="flex-1 py-1.5 rounded-lg border border-slate-200 text-slate-600 font-bold text-[13px] flex items-center justify-center gap-1.5 active:bg-slate-50 transition-colors"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => handleConfirmAccount(msg.id)}
+                                className="flex-1 py-1.5 rounded-lg font-bold text-[13px] bg-[#D8875D] text-white shadow-sm flex items-center justify-center gap-1.5 active:bg-[#C97A56] transition-colors"
+                              >
+                                <Check className="w-4 h-4" />
+                                Registrar
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+
+              {isTyping && (
+                <div className="flex justify-start w-full">
+                  <div className="text-[22px] leading-[40px] text-slate-400 font-handwriting italic tracking-wider">
+                    escrevendo...
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} className="h-[40px] shrink-0" />
+            </div>
+          </div>
+
+          {/* Floating Scroll Buttons */}
+          <AnimatePresence>
+            {showScrollTop && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                onClick={scrollToTop}
+                className="absolute bottom-28 right-4 w-10 h-10 bg-white border border-slate-200 rounded-full shadow-md flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-50 z-30 transition-colors"
+              >
+                <ChevronUp className="w-5 h-5" />
+              </motion.button>
+            )}
+            {showScrollBottom && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                onClick={scrollToBottom}
+                className="absolute bottom-28 right-16 w-10 h-10 bg-[#D8875D] border border-[#c4774f] rounded-full shadow-md flex items-center justify-center text-white hover:bg-[#c4774f] z-30 transition-colors"
+              >
+                <ChevronDown className="w-5 h-5" />
+              </motion.button>
+            )}
           </AnimatePresence>
 
-          {isTyping && (
-            <div className="flex justify-start w-full">
-              <div className="text-[22px] leading-[40px] text-slate-400 font-handwriting italic tracking-wider">
-                escrevendo...
+          {/* Input Area */}
+          <div className="w-full shrink-0 px-6 py-4 bg-[#fdfbf7] z-20 border-t border-slate-200/60 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
+            {pendingConfirmation && (
+              <div className="flex gap-2 mb-3 overflow-x-auto py-1 no-scrollbar justify-center">
+                {pendingConfirmation.step === "status" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleOptionSelect("pago")}
+                      className="px-4 py-2 bg-[#D8875D] hover:bg-[#c4774f] text-white rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
+                    >
+                      Já foi paga
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOptionSelect("pendente")}
+                      className="px-4 py-2 bg-white text-[#D8875D] border border-[#D8875D]/20 hover:bg-[#D8875D]/5 rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
+                    >
+                      Adicionar como pendente
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleOptionSelect("dinheiro")}
+                      className="px-4 py-2 bg-[#D8875D] hover:bg-[#c4774f] text-white rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
+                    >
+                      Dinheiro / À Vista
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOptionSelect("credito")}
+                      className="px-4 py-2 bg-white text-[#D8875D] border border-[#D8875D]/20 hover:bg-[#D8875D]/5 rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
+                    >
+                      Cartão de Crédito
+                    </button>
+                  </>
+                )}
               </div>
+            )}
+            <form onSubmit={handleSend} className="flex items-center gap-2">
+              <div className="w-12 h-12 shrink-0 bg-white rounded-full flex items-center justify-center shadow-[0_4px_15px_rgba(0,0,0,0.03)] border border-slate-100 text-[#D8875D]">
+                <Sparkles className="w-5 h-5" />
+              </div>
+
+              <div className="flex-1 h-14 bg-white rounded-full flex items-center px-5 shadow-[0_4px_20px_rgba(0,0,0,0.04)] border border-slate-100 focus-within:border-[#D8875D]/30 focus-within:ring-2 focus-within:ring-[#D8875D]/10 transition-all">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  className="flex-1 bg-transparent border-none outline-none text-[15px] text-slate-800 placeholder:text-slate-400 font-medium h-full"
+                  placeholder="Digite uma mensagem..."
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-14 h-14 shrink-0 rounded-full bg-[#D8875D] text-white flex items-center justify-center active:scale-95 transition-all shadow-[0_4px_15px_rgba(216,135,93,0.3)]"
+              >
+                <Send className="w-6 h-6 ml-1" />
+              </button>
+            </form>
+          </div>
+        </>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-4 py-4 bg-slate-50 z-20">
+          {conversationAccounts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full opacity-50 space-y-4">
+              <List className="w-12 h-12 text-slate-400" />
+              <p className="text-slate-500 font-medium">
+                Nenhuma conta anotada ainda
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3 pb-8">
+              {conversationAccounts.map((acc) => {
+                const isPaid = acc.status === AccountStatus.PAID;
+                return (
+                  <div
+                    key={acc.id}
+                    className={`bg-white rounded-xl p-4 shadow-sm border border-slate-100 relative overflow-hidden transition-all ${isPaid ? "opacity-60" : ""}`}
+                  >
+                    {isPaid && (
+                      <div className="absolute top-1/2 left-4 right-4 h-[1px] bg-slate-400 -translate-y-1/2 z-10 pointer-events-none" />
+                    )}
+                    <div className="flex justify-between items-center relative z-0">
+                      <div>
+                        <p
+                          className={`font-bold text-[15px] ${isPaid ? "text-slate-500" : "text-slate-800"}`}
+                        >
+                          {acc.name}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {new Date(
+                            acc.paymentDate || acc.date || 0,
+                          ).toLocaleDateString("pt-BR")}{" "}
+                          •{" "}
+                          {acc.category?.replace("💬 Conversa - ", "") ||
+                            "Pendente"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p
+                          className={`font-bold text-[16px] ${isPaid ? "text-slate-500" : "text-slate-800"}`}
+                        >
+                          {acc.value.toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-          <div ref={messagesEndRef} className="h-[40px] shrink-0" />
         </div>
-      </div>
-
-      {/* Floating Scroll Buttons */}
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            onClick={scrollToTop}
-            className="absolute bottom-28 right-4 w-10 h-10 bg-white border border-slate-200 rounded-full shadow-md flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-50 z-30 transition-colors"
-          >
-            <ChevronUp className="w-5 h-5" />
-          </motion.button>
-        )}
-        {showScrollBottom && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            onClick={scrollToBottom}
-            className="absolute bottom-28 right-16 w-10 h-10 bg-[#D8875D] border border-[#c4774f] rounded-full shadow-md flex items-center justify-center text-white hover:bg-[#c4774f] z-30 transition-colors"
-          >
-            <ChevronDown className="w-5 h-5" />
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      {/* Input Area */}
-      <div className="w-full shrink-0 px-6 py-4 bg-[#fdfbf7] z-20 border-t border-slate-200/60 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
-        {pendingConfirmation && (
-          <div className="flex gap-2 mb-3 overflow-x-auto py-1 no-scrollbar justify-center">
-            {pendingConfirmation.step === "status" ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleOptionSelect("pago")}
-                  className="px-4 py-2 bg-[#D8875D] hover:bg-[#c4774f] text-white rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
-                >
-                  Já foi paga
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOptionSelect("pendente")}
-                  className="px-4 py-2 bg-white text-[#D8875D] border border-[#D8875D]/20 hover:bg-[#D8875D]/5 rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
-                >
-                  Adicionar como pendente
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleOptionSelect("dinheiro")}
-                  className="px-4 py-2 bg-[#D8875D] hover:bg-[#c4774f] text-white rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
-                >
-                  Dinheiro / À Vista
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOptionSelect("credito")}
-                  className="px-4 py-2 bg-white text-[#D8875D] border border-[#D8875D]/20 hover:bg-[#D8875D]/5 rounded-full font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap"
-                >
-                  Cartão de Crédito
-                </button>
-              </>
-            )}
-          </div>
-        )}
-        <form onSubmit={handleSend} className="flex items-center gap-2">
-          <div className="w-12 h-12 shrink-0 bg-white rounded-full flex items-center justify-center shadow-[0_4px_15px_rgba(0,0,0,0.03)] border border-slate-100 text-[#D8875D]">
-            <Sparkles className="w-5 h-5" />
-          </div>
-
-          <div className="flex-1 h-14 bg-white rounded-full flex items-center px-5 shadow-[0_4px_20px_rgba(0,0,0,0.04)] border border-slate-100 focus-within:border-[#D8875D]/30 focus-within:ring-2 focus-within:ring-[#D8875D]/10 transition-all">
-            <input
-              ref={inputRef}
-              type="text"
-              className="flex-1 bg-transparent border-none outline-none text-[15px] text-slate-800 placeholder:text-slate-400 font-medium h-full"
-              placeholder="Digite uma mensagem..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-14 h-14 shrink-0 rounded-full bg-[#D8875D] text-white flex items-center justify-center active:scale-95 transition-all shadow-[0_4px_15px_rgba(216,135,93,0.3)]"
-          >
-            <Send className="w-6 h-6 ml-1" />
-          </button>
-        </form>
-      </div>
+      )}
     </div>
   );
 };
